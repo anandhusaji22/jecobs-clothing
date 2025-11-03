@@ -80,6 +80,13 @@ function Page() {
   // Get user from Redux to access saved sizes
   const user = useSelector((state: RootState) => state.user);
 
+  // Helper function to compare dates by UTC components (timezone-safe)
+  const datesMatch = (date1: Date, date2: Date): boolean => {
+    return date1.getUTCFullYear() === date2.getUTCFullYear() &&
+           date1.getUTCMonth() === date2.getUTCMonth() &&
+           date1.getUTCDate() === date2.getUTCDate();
+  };
+
   const {
     register,
     handleSubmit,
@@ -301,11 +308,19 @@ function Page() {
   };
 
   const handleDateSelect = (dateData: IAvailableDate) => {
-    const selectedDateObj = new Date(dateData.date);
+    // Normalize date to UTC midnight to avoid timezone issues
+    // This ensures the selected date matches exactly with how we match dates in the calendar
+    const dbDate = new Date(dateData.date);
+    const selectedDateObj = new Date(Date.UTC(
+      dbDate.getUTCFullYear(),
+      dbDate.getUTCMonth(),
+      dbDate.getUTCDate(),
+      0, 0, 0, 0
+    ));
     const availableSlots = getAvailableSlots(dateData);
     
     // Check if this date is already the primary date - clicking again removes it
-    if (selectedDate && selectedDate.toDateString() === selectedDateObj.toDateString()) {
+    if (selectedDate && datesMatch(selectedDate, selectedDateObj)) {
       // Remove primary date
       setSelectedDate(undefined);
       setValue('availableDate', null as unknown as Date);
@@ -324,7 +339,7 @@ function Page() {
     
     // Check if this date is already in additional dates - clicking again removes it
     const additionalIndex = additionalDates.findIndex(date => 
-      date.toDateString() === selectedDateObj.toDateString()
+      datesMatch(date, selectedDateObj)
     );
     
     if (additionalIndex !== -1) {
@@ -348,14 +363,16 @@ function Page() {
       }
     } else {
       // Primary date exists, add this as additional date if we need more slots
-      const currentMainSlots = getAvailableSlots(availableDates.find(d => 
-        new Date(d.date).toDateString() === selectedDate.toDateString()
-      ) || dateData);
+      const currentMainSlots = getAvailableSlots(availableDates.find(d => {
+        const dbDate = new Date(d.date);
+        return datesMatch(dbDate, selectedDate);
+      }) || dateData);
       
       const currentAdditionalSlots = additionalDates.reduce((total, date) => {
-        const foundDateData = availableDates.find(d => 
-          new Date(d.date).toDateString() === date.toDateString()
-        );
+        const foundDateData = availableDates.find(d => {
+          const dbDate = new Date(d.date);
+          return datesMatch(dbDate, date);
+        });
         return total + (foundDateData ? getAvailableSlots(foundDateData) : 0);
       }, 0);
       
@@ -404,18 +421,20 @@ function Page() {
     let totalSlots = 0;
     
     if (selectedDate) {
-      const mainDateData = availableDates.find(d => 
-        new Date(d.date).toDateString() === selectedDate.toDateString()
-      );
+      const mainDateData = availableDates.find(d => {
+        const dbDate = new Date(d.date);
+        return datesMatch(dbDate, selectedDate);
+      });
       if (mainDateData) {
         totalSlots += getAvailableSlots(mainDateData);
       }
     }
     
     additionalDates.forEach(date => {
-      const dateData = availableDates.find(d => 
-        new Date(d.date).toDateString() === date.toDateString()
-      );
+      const dateData = availableDates.find(d => {
+        const dbDate = new Date(d.date);
+        return datesMatch(dbDate, date);
+      });
       if (dateData) {
         totalSlots += getAvailableSlots(dateData);
       }
@@ -430,9 +449,10 @@ function Page() {
     
     // Add primary date first
     if (selectedDate) {
-      const mainDateData = availableDates.find(d => 
-        new Date(d.date).toDateString() === selectedDate.toDateString()
-      );
+      const mainDateData = availableDates.find(d => {
+        const dbDate = new Date(d.date);
+        return datesMatch(dbDate, selectedDate);
+      });
       if (mainDateData) {
         allSelectedDates.push(mainDateData);
       }
@@ -440,9 +460,10 @@ function Page() {
     
     // Add additional dates
     additionalDates.forEach(date => {
-      const dateData = availableDates.find(d => 
-        new Date(d.date).toDateString() === date.toDateString()
-      );
+      const dateData = availableDates.find(d => {
+        const dbDate = new Date(d.date);
+        return datesMatch(dbDate, date);
+      });
       if (dateData) {
         allSelectedDates.push(dateData);
       }
@@ -1066,14 +1087,16 @@ function Page() {
                             
                             // Date is available only if it's not in past, not before min date, and has available slots
                             const isAvailable = !isPastDate && !isBeforeMinDate && dateData && isDateAvailable(dateData);
-                            const isSelected = selectedDate?.getDate() === date && 
-                                             selectedDate?.getMonth() === month &&
-                                             selectedDate?.getFullYear() === year;
+                            // Use UTC methods for comparison to match how we match dates from database
+                            const isSelected = selectedDate && 
+                                             selectedDate.getUTCDate() === date &&
+                                             selectedDate.getUTCMonth() === month &&
+                                             selectedDate.getUTCFullYear() === year;
                             
                             const isAdditionalSelected = additionalDates.some(d => 
-                              d.getDate() === date && 
-                              d.getMonth() === month &&
-                              d.getFullYear() === year
+                              d.getUTCDate() === date && 
+                              d.getUTCMonth() === month &&
+                              d.getUTCFullYear() === year
                             );
                             
                             calendarDays.push(
@@ -1142,9 +1165,10 @@ function Page() {
                           </span>
                           <span className="text-sm text-green-600 font-medium">
                             {(() => {
-                              const dateData = availableDates.find(d => 
-                                new Date(d.date).toDateString() === selectedDate.toDateString()
-                              );
+                              const dateData = availableDates.find(d => {
+                                const dbDate = new Date(d.date);
+                                return datesMatch(dbDate, selectedDate);
+                              });
                               return dateData ? `${getAvailableSlots(dateData)} slots` : '0 slots';
                             })()}
                           </span>
@@ -1159,9 +1183,10 @@ function Page() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-green-600 font-medium">
                                 {(() => {
-                                  const dateData = availableDates.find(d => 
-                                    new Date(d.date).toDateString() === date.toDateString()
-                                  );
+                                  const dateData = availableDates.find(d => {
+                                    const dbDate = new Date(d.date);
+                                    return datesMatch(dbDate, date);
+                                  });
                                   return dateData ? `${getAvailableSlots(dateData)} slots` : '0 slots';
                                 })()}
                               </span>
