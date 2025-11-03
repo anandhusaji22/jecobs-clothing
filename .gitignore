@@ -35,6 +35,8 @@ yarn-error.log*
 
 # Firebase service account (keep secure)
 firebase-service-account.json
+src/lib/firebase/Jacobs.json
+**/Jacobs.json
 
 # vercel
 .vercel
