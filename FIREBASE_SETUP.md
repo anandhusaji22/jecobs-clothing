@@ -36,40 +36,20 @@ This project supports multiple methods for configuring Firebase Admin SDK:
    }
    ```
 
-### Method 2: Environment Variables (Required for Vercel/Production)
+### Method 2: Environment Variable
 
-The app now uses environment variables for production deployments. Add these to your Vercel project settings:
+Add to your `.env.local`:
+```bash
+FIREBASE_SERVICE_ACCOUNT='{"type":"service_account","project_id":"jacob-s-website",...}'
+```
 
-**Required Environment Variables:**
+### Method 3: Individual Environment Variables (Legacy)
+
 ```bash
 FIREBASE_PROJECT_ID=jacob-s-website
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----\n"
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@jacob-s-website.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----"
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@jacob-s-website.iam.gserviceaccount.com
 ```
-
-**Optional Environment Variables (have defaults):**
-```bash
-FIREBASE_PRIVATE_KEY_ID=f3536be430f0d3b8137b845ee96f95d6cf1723ce
-FIREBASE_CLIENT_ID=117184665542800812225
-FIREBASE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
-FIREBASE_TOKEN_URI=https://oauth2.googleapis.com/token
-FIREBASE_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
-FIREBASE_CLIENT_X509_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40jacob-s-website.iam.gserviceaccount.com
-FIREBASE_UNIVERSE_DOMAIN=googleapis.com
-```
-
-**How to add to Vercel:**
-1. Go to your Vercel project dashboard
-2. Navigate to **Settings** → **Environment Variables**
-3. Add each variable from your `Jacobs.json` file:
-   - `FIREBASE_PROJECT_ID` = `project_id` from JSON
-   - `FIREBASE_PRIVATE_KEY` = `private_key` from JSON (keep the `\n` characters)
-   - `FIREBASE_CLIENT_EMAIL` = `client_email` from JSON
-   - `FIREBASE_PRIVATE_KEY_ID` = `private_key_id` from JSON
-   - `FIREBASE_CLIENT_ID` = `client_id` from JSON
-   - `FIREBASE_CLIENT_X509_CERT_URL` = `client_x509_cert_url` from JSON
-4. Make sure to select **Production**, **Preview**, and **Development** environments
-5. Redeploy your application
 
 ## 🛡️ Security Notes
 
