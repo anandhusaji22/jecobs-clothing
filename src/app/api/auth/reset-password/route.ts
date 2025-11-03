@@ -1,0 +1,131 @@
+import { NextRequest, NextResponse } from 'next/server';
+import connectDB from '@/lib/db';
+import OTP from '@/models/OTP';
+import { auth } from '@/lib/firebase/admin';
+
+export const runtime = 'nodejs';
+
+export async function POST(req: NextRequest) {
+  try {
+    const { email, otp, newPassword } = await req.json();
+
+    // Validate required fields
+    if (!email || !otp || !newPassword) {
+      return NextResponse.json(
+        { success: false, error: 'Email, OTP, and new password are required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate email format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid email format' },
+        { status: 400 }
+      );
+    }
+
+    // Validate OTP format
+    if (!/^\d{6}$/.test(otp)) {
+      return NextResponse.json(
+        { success: false, error: 'OTP must be 6 digits' },
+        { status: 400 }
+      );
+    }
+
+    // Validate password length
+    if (newPassword.length < 6) {
+      return NextResponse.json(
+        { success: false, error: 'Password must be at least 6 characters' },
+        { status: 400 }
+      );
+    }
+
+    // Connect to database
+    await connectDB();
+
+    // Find the OTP record
+    const otpRecord = await OTP.findOne({
+      email,
+      purpose: 'password_reset',
+      verified: false
+    }).sort({ createdAt: -1 });
+
+    if (!otpRecord) {
+      return NextResponse.json(
+        { success: false, error: 'No valid OTP found. Please request a new one.' },
+        { status: 404 }
+      );
+    }
+
+    // Check if OTP has expired
+    if (new Date() > otpRecord.expiresAt) {
+      await OTP.deleteOne({ _id: otpRecord._id });
+      return NextResponse.json(
+        { success: false, error: 'OTP has expired. Please request a new one.' },
+        { status: 400 }
+      );
+    }
+
+    // Check if max attempts exceeded
+    if (otpRecord.attempts >= otpRecord.maxAttempts) {
+      await OTP.deleteOne({ _id: otpRecord._id });
+      return NextResponse.json(
+        { success: false, error: 'Maximum verification attempts exceeded. Please request a new OTP.' },
+        { status: 400 }
+      );
+    }
+
+    // Verify OTP
+    if (otpRecord.otp !== otp) {
+      // Increment attempts
+      otpRecord.attempts += 1;
+      await otpRecord.save();
+
+      const remainingAttempts = otpRecord.maxAttempts - otpRecord.attempts;
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Invalid OTP. ${remainingAttempts} attempt(s) remaining.` 
+        },
+        { status: 400 }
+      );
+    }
+
+    // OTP is valid - Update password in Firebase
+    try {
+      const userRecord = await auth.getUserByEmail(email);
+      await auth.updateUser(userRecord.uid, {
+        password: newPassword
+      });
+    } catch (error) {
+      console.error('Error updating password in Firebase:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to update password. Please try again.' },
+        { status: 500 }
+      );
+    }
+
+    // Mark OTP as verified and delete it
+    await OTP.deleteOne({ _id: otpRecord._id });
+
+    // Also delete any other OTPs for this email
+    await OTP.deleteMany({ email, purpose: 'password_reset' });
+
+    return NextResponse.json(
+      { 
+        success: true, 
+        message: 'Password reset successful. You can now login with your new password.' 
+      },
+      { status: 200 }
+    );
+
+  } catch (error) {
+    console.error('Error in reset-password API:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to reset password. Please try again later.' },
+      { status: 500 }
+    );
+  }
+}
