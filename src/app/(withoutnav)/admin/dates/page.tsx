@@ -109,11 +109,18 @@ const AvailableDatesPage = () => {
     fetchData()
   }, [selectedMonth])
 
+  // Helper function to compare dates by UTC components (timezone-safe)
+  const datesMatch = (date1: Date, date2: Date): boolean => {
+    return date1.getUTCFullYear() === date2.getUTCFullYear() &&
+           date1.getUTCMonth() === date2.getUTCMonth() &&
+           date1.getUTCDate() === date2.getUTCDate();
+  };
+
   // Get date data (from API, pending changes, or default)
   const getDateData = (date: Date) => {
     const dateKey = date.toISOString().split('T')[0]
     const existingDate = availableDates.find(d => 
-      d.date.toDateString() === date.toDateString()
+      datesMatch(d.date, date)
     )
     const pendingChange = pendingChanges.get(dateKey)
     
@@ -187,7 +194,7 @@ const AvailableDatesPage = () => {
       if (response.ok) {
         // Update local state and clear pending changes
         setAvailableDates(prev => {
-          const filtered = prev.filter(d => d.date.toDateString() !== date.toDateString())
+          const filtered = prev.filter(d => !datesMatch(d.date, date))
           return [...filtered, updatedDate].sort((a, b) => a.date.getTime() - b.date.getTime())
         })
         

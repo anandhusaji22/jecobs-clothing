@@ -51,13 +51,26 @@ export async function POST(request: NextRequest) {
     const createdOrders = [];
 
     for (const item of cart.items) {
-      // Fetch actual available dates from database
+      // Fetch actual available dates from database using UTC to avoid timezone issues
       const datePromises = item.selectedDates.map(async (dateStr: Date) => {
         const date = new Date(dateStr);
+        // Use UTC to create date range for consistent querying
+        const startDate = new Date(Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          0, 0, 0, 0
+        ));
+        const endDate = new Date(Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          23, 59, 59, 999
+        ));
         const dateData = await AvailableDate.findOne({
           date: {
-            $gte: new Date(date.setHours(0, 0, 0, 0)),
-            $lte: new Date(date.setHours(23, 59, 59, 999))
+            $gte: startDate,
+            $lte: endDate
           }
         });
         return dateData;

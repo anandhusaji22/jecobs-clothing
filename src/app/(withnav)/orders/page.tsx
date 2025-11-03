@@ -92,9 +92,19 @@ export default function OrdersPage() {
     fetchOrders()
   }, [user.uid, user.authLoading, router, fetchOrders])
 
+  // Helper function to format date using UTC components (timezone-safe)
+  const formatDateUTC = (dateString: string): string => {
+    const date = new Date(dateString);
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = monthNames[date.getUTCMonth()];
+    const year = date.getUTCFullYear();
+    return `${month} ${day}, ${year}`;
+  };
+
   const getFormattedDates = (slotAllocation: OrderItem['slotAllocation']) => {
     return slotAllocation.map((allocation) => ({
-      date: format(new Date(allocation.date.date), 'MMM dd, yyyy'),
+      date: formatDateUTC(allocation.date.date),
       slots: allocation.normalSlotsUsed + allocation.emergencySlotsUsed,
       hasEmergency: allocation.emergencySlotsUsed > 0
     }))

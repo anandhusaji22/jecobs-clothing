@@ -20,8 +20,9 @@ export async function GET(request: NextRequest) {
     let query = {}
     
     if (month && year) {
-      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1)
-      const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59)
+      // Use UTC to create date range to avoid timezone issues
+      const startDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, 1, 0, 0, 0, 0))
+      const endDate = new Date(Date.UTC(parseInt(year), parseInt(month), 0, 23, 59, 59, 999))
       query = {
         date: {
           $gte: startDate,
@@ -29,9 +30,9 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      // Default: get dates from today onwards
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      // Default: get dates from today onwards (using UTC)
+      const now = new Date()
+      const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0))
       query = {
         date: { $gte: today }
       }

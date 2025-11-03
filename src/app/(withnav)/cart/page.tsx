@@ -273,11 +273,22 @@ function CartPage() {
                       <div>
                         <p className="font-medium">Delivery Dates:</p>
                         <div className="flex flex-wrap gap-2 mt-1">
-                          {item.selectedDates.map((date, index) => (
-                            <span key={index} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-                              {format(new Date(date), 'MMM dd, yyyy')}
-                            </span>
-                          ))}
+                          {item.selectedDates.map((date, index) => {
+                            // Helper function to format date using UTC components (timezone-safe)
+                            const formatDateUTC = (dateInput: Date | string): string => {
+                              const date = new Date(dateInput);
+                              const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                              const day = String(date.getUTCDate()).padStart(2, '0');
+                              const month = monthNames[date.getUTCMonth()];
+                              const year = date.getUTCFullYear();
+                              return `${month} ${day}, ${year}`;
+                            };
+                            return (
+                              <span key={index} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
+                                {formatDateUTC(date)}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
 

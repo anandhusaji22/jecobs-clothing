@@ -106,8 +106,17 @@ export async function POST(request: NextRequest) {
       
       for (const order of orders) {
         try {
+          // Format dates using UTC to avoid timezone issues
+          const formatDateUTC = (dateString: string): string => {
+            const date = new Date(dateString);
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            const month = monthNames[date.getUTCMonth()];
+            const year = date.getUTCFullYear();
+            return `${month} ${day}, ${year}`;
+          };
           const deliveryDates = order.slotAllocation.map((slot: { date: { date: string } }) => 
-            format(new Date(slot.date.date), 'MMM dd, yyyy')
+            formatDateUTC(slot.date.date)
           );
 
           await sendOrderConfirmationEmail({
