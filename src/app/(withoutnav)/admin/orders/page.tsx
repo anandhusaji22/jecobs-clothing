@@ -66,13 +66,19 @@ const OrdersPage = () => {
       filtered = filtered.filter(order => order.status.toLowerCase() === statusFilter.toLowerCase())
     }
 
-    // Filter by date
+    // Filter by date (using UTC for timezone-safe comparison)
     if (dateFilter) {
       const filterDate = new Date(dateFilter)
+      const filterYear = filterDate.getUTCFullYear()
+      const filterMonth = filterDate.getUTCMonth()
+      const filterDay = filterDate.getUTCDate()
+      
       filtered = filtered.filter(order => {
         return order.slotAllocation.some(slot => {
           const slotDate = new Date(slot.date.date)
-          return slotDate.toDateString() === filterDate.toDateString()
+          return slotDate.getUTCFullYear() === filterYear &&
+                 slotDate.getUTCMonth() === filterMonth &&
+                 slotDate.getUTCDate() === filterDay
         })
       })
     }
@@ -168,9 +174,31 @@ const OrdersPage = () => {
     }
   }
 
+  // Helper function to format date using UTC components (timezone-safe)
+  const formatDateUTC = (dateString: string): string => {
+    const date = new Date(dateString);
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[date.getUTCMonth()];
+    const year = date.getUTCFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
+  // Helper function to format date with day name using UTC components
+  const formatDateUTCWithDay = (dateString: string): string => {
+    const date = new Date(dateString);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = dayNames[date.getUTCDay()];
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[date.getUTCMonth()];
+    const year = date.getUTCFullYear();
+    return `${dayName}, ${day} ${month} ${year}`;
+  };
+
   const getDeliveryDates = (slotAllocation: OrderItem['slotAllocation']) => {
     return slotAllocation.map(slot => 
-      format(new Date(slot.date.date), 'dd MMM yyyy')
+      formatDateUTC(slot.date.date)
     ).join(', ')
   }
 
@@ -450,7 +478,7 @@ const OrdersPage = () => {
                             <div className="flex items-center gap-2 mb-2">
                               <Calendar className="w-4 h-4 lg:w-5 lg:h-5 text-blue-600" />
                               <span className="font-semibold text-sm lg:text-base">
-                                {format(new Date(slot.date.date), 'EEEE, dd MMM yyyy')}
+                                {formatDateUTCWithDay(slot.date.date)}
                               </span>
                             </div>
                             <div className="ml-6 lg:ml-7">
