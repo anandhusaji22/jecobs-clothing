@@ -4,7 +4,12 @@ import path from 'path';
 export const runtime = 'nodejs';
 
 // Get service account credentials from environment variable or JSON file
-function getServiceAccount(): admin.ServiceAccount {
+function getServiceAccount(): admin.ServiceAccount | null {
+  // During build phase, environment variables might not be available
+  // Return null and let initialization handle it gracefully
+  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build' || 
+                       process.env.NEXT_PHASE === 'phase-development-build';
+  
   // Method 1: Try environment variable (for Vercel/production)
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
@@ -45,6 +50,12 @@ function getServiceAccount(): admin.ServiceAccount {
     }
   }
 
+  // During build, return null instead of throwing
+  if (isBuildPhase) {
+    return null;
+  }
+
+  // At runtime, throw error if credentials not found
   throw new Error(
     'Firebase Admin initialization failed. ' +
     'Please provide FIREBASE_SERVICE_ACCOUNT environment variable or Jacobs.json file. ' +
@@ -52,24 +63,79 @@ function getServiceAccount(): admin.ServiceAccount {
   );
 }
 
-// Initialize Firebase Admin only once
-if (!admin.apps.length) {
-  try {
-    const serviceAccount = getServiceAccount();
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    
-    console.log('✅ Firebase Admin initialized successfully');
-  } catch (error) {
-    console.error('❌ Firebase Admin initialization failed:', error);
-    throw error;
+// Lazy initialization - only initialize when actually needed
+let initialized = false;
+let dbInstance: admin.firestore.Firestore | null = null;
+let authInstance: admin.auth.Auth | null = null;
+
+function initializeFirebaseAdmin() {
+  if (!admin.apps.length && !initialized) {
+    try {
+      const serviceAccount = getServiceAccount();
+      
+      // During build, serviceAccount might be null - that's okay
+      if (!serviceAccount) {
+        console.warn('⚠️ Firebase Admin not initialized during build - will retry at runtime');
+        return;
+      }
+      
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      
+      initialized = true;
+      dbInstance = admin.firestore();
+      authInstance = admin.auth();
+      console.log('✅ Firebase Admin initialized successfully');
+    } catch (error) {
+      // During build phase, environment variables might not be available
+      // Don't throw - allow build to continue. Will re-try at runtime.
+      if (process.env.NEXT_PHASE === 'phase-production-build' || 
+          process.env.NEXT_PHASE === 'phase-development-build') {
+        console.warn('⚠️ Firebase Admin not initialized during build - will retry at runtime');
+        return;
+      }
+      // At runtime, log but don't throw immediately - let individual calls handle it
+      console.error('❌ Firebase Admin initialization failed:', error);
+      console.warn('⚠️ Firebase Admin not initialized - some features may not work');
+    }
   }
 }
 
-// Export Firebase services
-export const db = admin.firestore();
-export const auth = admin.auth();
+// Lazy getters for Firebase services
+function getDb() {
+  initializeFirebaseAdmin();
+  if (!dbInstance) {
+    throw new Error('Firebase Admin not initialized. Please check FIREBASE_SERVICE_ACCOUNT environment variable.');
+  }
+  return dbInstance;
+}
+
+function getAuth() {
+  initializeFirebaseAdmin();
+  if (!authInstance) {
+    throw new Error('Firebase Admin not initialized. Please check FIREBASE_SERVICE_ACCOUNT environment variable.');
+  }
+  return authInstance;
+}
+
+// Export Firebase services with lazy initialization
+export const db = {
+  collection: (path: string) => getDb().collection(path),
+  doc: (path: string) => getDb().doc(path),
+  batch: () => getDb().batch(),
+  settings: (settings: admin.firestore.Settings) => getDb().settings(settings),
+  // Add other methods as needed
+} as admin.firestore.Firestore;
+
+export const auth = {
+  verifyIdToken: (idToken: string) => getAuth().verifyIdToken(idToken),
+  getUser: (uid: string) => getAuth().getUser(uid),
+  createUser: (properties: admin.auth.CreateRequest) => getAuth().createUser(properties),
+  updateUser: (uid: string, properties: admin.auth.UpdateRequest) => getAuth().updateUser(uid, properties),
+  deleteUser: (uid: string) => getAuth().deleteUser(uid),
+  // Add other methods as needed
+} as admin.auth.Auth;
 
 // Helper function to verify Firebase ID tokens
 export async function verifyIdToken(token: string) {
