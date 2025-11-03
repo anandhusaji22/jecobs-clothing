@@ -1,4 +1,6 @@
 import admin from 'firebase-admin';
+import fs from 'fs';
+import path from 'path';
 export const runtime = 'nodejs';
 
 // Get service account credentials from environment variable or JSON file
@@ -33,15 +35,12 @@ function getServiceAccount(): admin.ServiceAccount {
   // Only try this if we're not in a build environment (Vercel)
   if (typeof window === 'undefined' && !process.env.VERCEL) {
     try {
-      // Use dynamic require to avoid build-time errors
-      const fs = require('fs');
-      const path = require('path');
       const jsonPath = path.join(process.cwd(), 'src', 'lib', 'firebase', 'Jacobs.json');
       if (fs.existsSync(jsonPath)) {
         const fileContent = fs.readFileSync(jsonPath, 'utf8');
         return JSON.parse(fileContent) as admin.ServiceAccount;
       }
-    } catch (error) {
+    } catch {
       // File doesn't exist or can't be loaded - this is okay
     }
   }
