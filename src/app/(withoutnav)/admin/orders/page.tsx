@@ -40,6 +40,19 @@ interface OrderItem {
   }
 }
 
+interface SavedSize {
+  _id: string
+  name: string
+  category: string
+  chest: number | string
+  length: number | string
+  shoulders: number | string
+  sleeves: number | string
+  neck: number | string
+  waist: number | string
+  backPleatLength?: number | string
+}
+
 const OrdersPage = () => {
   const [orders, setOrders] = useState<OrderItem[]>([])
   const [filteredOrders, setFilteredOrders] = useState<OrderItem[]>([])
@@ -49,6 +62,8 @@ const OrdersPage = () => {
   const [updateLoading, setUpdateLoading] = useState(false)
   const [dateFilter, setDateFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedOrderSizeDetails, setSelectedOrderSizeDetails] = useState<SavedSize | null>(null)
+  const [loadingSizeDetails, setLoadingSizeDetails] = useState(false)
 
   const applyFilters = useCallback(() => {
     let filtered = [...orders]
@@ -129,6 +144,36 @@ const OrdersPage = () => {
       console.error('Error fetching orders:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchSizeDetails = async (userFirebaseUid: string, sizeName: string) => {
+    try {
+      setLoadingSizeDetails(true)
+      setSelectedOrderSizeDetails(null)
+      
+      // First, get the user by firebaseUid to get their MongoDB _id
+      const usersResponse = await makeAuthenticatedRequest('/api/admin/users')
+      if (usersResponse.data.success) {
+        const user = usersResponse.data.users.find((u: { firebaseUid: string }) => u.firebaseUid === userFirebaseUid)
+        if (user && user._id) {
+          // Fetch user details including saved sizes
+          const userDetailsResponse = await makeAuthenticatedRequest(`/api/admin/users/${user._id}`)
+          if (userDetailsResponse.data.success && userDetailsResponse.data.user.savedSizes) {
+            // Find the size that matches the order's size name
+            const matchingSize = userDetailsResponse.data.user.savedSizes.find(
+              (size: SavedSize) => size.name === sizeName
+            )
+            if (matchingSize) {
+              setSelectedOrderSizeDetails(matchingSize)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching size details:', error)
+    } finally {
+      setLoadingSizeDetails(false)
     }
   }
 
@@ -325,9 +370,14 @@ const OrdersPage = () => {
                         variant="outline"
                         size="sm"
                         className="text-xs lg:text-sm px-2 lg:px-3 py-1 lg:py-2"
-                        onClick={() => {
+                        onClick={async () => {
                           setSelectedOrder(order)
                           setIsDialogOpen(true)
+                          setSelectedOrderSizeDetails(null) // Reset size details
+                          // Fetch size details for this order
+                          if (order.size && order.userFirebaseUid) {
+                            await fetchSizeDetails(order.userFirebaseUid, order.size)
+                          }
                         }}
                       >
                         View
@@ -354,7 +404,13 @@ const OrdersPage = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open)
+        if (!open) {
+          // Clear size details when dialog closes
+          setSelectedOrderSizeDetails(null)
+        }
+      }}>
         <DialogContent className="max-w-2xl mx-4 lg:mx-auto font-poppins max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base lg:text-lg">Order Details</DialogTitle>
@@ -434,14 +490,63 @@ const OrdersPage = () => {
                         {/* Size/Measurements Section */}
                         {selectedOrder.size && (
                           <div className="bg-white border border-gray-200 rounded p-2 lg:p-3">
-                            <div className="flex items-start gap-2">
-                              <span className="text-gray-500 text-xs lg:text-sm flex-shrink-0">📏 Size/Measurements:</span>
-                              <div className="text-xs lg:text-sm">
-                                <strong className="text-blue-700">{selectedOrder.size}</strong>
-                                <p className="text-gray-500 text-xs mt-0.5">
-                                  (Customer&apos;s saved size profile)
-                                </p>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-start gap-2">
+                                <span className="text-gray-500 text-xs lg:text-sm flex-shrink-0">📏 Size/Measurements:</span>
+                                <div className="text-xs lg:text-sm">
+                                  <strong className="text-blue-700">{selectedOrder.size}</strong>
+                                  {selectedOrderSizeDetails && selectedOrderSizeDetails.category !== 'Unknown' && (
+                                    <span className="ml-2 text-gray-500">({selectedOrderSizeDetails.category})</span>
+                                  )}
+                                  {loadingSizeDetails && (
+                                    <p className="text-gray-400 text-xs mt-0.5">Loading measurements...</p>
+                                  )}
+                                </div>
                               </div>
+                              
+                              {/* Display actual measurements if available */}
+                              {selectedOrderSizeDetails && !loadingSizeDetails && (
+                                <div className="mt-2 pt-2 border-t border-gray-200">
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                                    <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                      <span className="font-medium text-gray-500">Chest:</span>
+                                      <p className="mt-0.5 font-semibold">{selectedOrderSizeDetails.chest}</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                      <span className="font-medium text-gray-500">Length:</span>
+                                      <p className="mt-0.5 font-semibold">{selectedOrderSizeDetails.length}</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                      <span className="font-medium text-gray-500">Shoulders:</span>
+                                      <p className="mt-0.5 font-semibold">{selectedOrderSizeDetails.shoulders}</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                      <span className="font-medium text-gray-500">Sleeves:</span>
+                                      <p className="mt-0.5 font-semibold">{selectedOrderSizeDetails.sleeves}</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                      <span className="font-medium text-gray-500">Neck:</span>
+                                      <p className="mt-0.5 font-semibold">{selectedOrderSizeDetails.neck}</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                      <span className="font-medium text-gray-500">Waist:</span>
+                                      <p className="mt-0.5 font-semibold">{selectedOrderSizeDetails.waist}</p>
+                                    </div>
+                                    {selectedOrderSizeDetails.backPleatLength && (
+                                      <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                        <span className="font-medium text-gray-500">Back Pleat Length:</span>
+                                        <p className="mt-0.5 font-semibold">{selectedOrderSizeDetails.backPleatLength}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {!selectedOrderSizeDetails && !loadingSizeDetails && (
+                                <p className="text-gray-500 text-xs mt-1">
+                                  (Size profile details not found)
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}

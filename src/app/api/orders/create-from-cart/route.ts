@@ -313,7 +313,7 @@ async function validateCartSlotAvailability(cartItems: ICartItem[]) {
         const dateStr = new Date(slotsNeeded.dateString).toISOString().split('T')[0];
         return {
           valid: false,
-          error: `Not enough normal slots available for ${dateStr}. Available: ${availableNormalSlots}, Required: ${slotsNeeded.normalSlots}`
+          error: `Not enough slots available for ${dateStr}. Available: ${availableNormalSlots}, Required: ${slotsNeeded.normalSlots} Please select a different date or reduce the quantity` 
         };
       }
       
@@ -321,7 +321,7 @@ async function validateCartSlotAvailability(cartItems: ICartItem[]) {
         const dateStr = new Date(slotsNeeded.dateString).toISOString().split('T')[0];
         return {
           valid: false,
-          error: `Not enough emergency slots available for ${dateStr}. Available: ${availableEmergencySlots}, Required: ${slotsNeeded.emergencySlots}`
+          error: `Not enough slots available for ${dateStr}. Available: ${availableEmergencySlots}, Required: ${slotsNeeded.emergencySlots} Please select a different date or reduce the quantity`
         };
       }
     }

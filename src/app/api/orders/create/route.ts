@@ -125,14 +125,14 @@ async function validateSlotAvailability(slotAllocation: SlotAllocation[]) {
       if (allocation.normalSlotsUsed > availableNormalSlots) {
         return {
           valid: false,
-          error: `Not enough normal slots available for ${allocation.date.date}`
+          error: `Not enough slots available for ${allocation.date.date} Please select a different date`
         };
       }
 
       if (allocation.emergencySlotsUsed > availableEmergencySlots) {
         return {
           valid: false,
-          error: `Not enough emergency slots available for ${allocation.date.date}`
+          error: `Not enough slots available for ${allocation.date.date} Please select a different date or reduce the quantity`
         };
       }
     }

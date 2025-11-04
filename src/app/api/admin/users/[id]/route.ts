@@ -81,7 +81,8 @@ export async function GET(
         shoulders: size.measurements?.shoulders || 'N/A',
         sleeves: size.measurements?.sleeves || 'N/A',
         neck: size.measurements?.neck || 'N/A',
-        waist: size.measurements?.waist || 'N/A'
+        waist: size.measurements?.waist || 'N/A',
+        backPleatLength: size.measurements?.backPleatLength || ''
       })),
       orderHistory: formattedOrders
     }
