@@ -46,19 +46,22 @@ const AvailableDatesPage = () => {
     return months
   }
 
-  // Generate all dates for the selected month
+  // Generate all dates for the selected month (using UTC to avoid timezone issues)
   const generateMonthDates = () => {
     const [year, month] = selectedMonth.split('-').map(Number)
     const daysInMonth = new Date(year, month, 0).getDate()
     const dates = []
     
+    // Get today in UTC for comparison
+    const now = new Date()
+    const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0))
+    
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month - 1, day)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      // Create date in UTC to avoid timezone shifts
+      const date = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0))
       
-      // Only include dates from today onwards
-      if (date >= today) {
+      // Only include dates from today onwards (compare UTC dates)
+      if (date >= todayUTC) {
         dates.push(date)
       }
     }
@@ -174,6 +177,14 @@ const AvailableDatesPage = () => {
       }
       const token = await user.getIdToken()
 
+      // Normalize date to UTC midnight to avoid timezone issues
+      const utcDate = new Date(Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      
       const response = await fetch('/api/admin/available-dates', {
         method: 'PUT',
         headers: { 
@@ -182,7 +193,7 @@ const AvailableDatesPage = () => {
         },
         body: JSON.stringify({ 
           dates: [{
-            date: date.toISOString(),
+            date: utcDate.toISOString(),
             normalSlots: updatedDate.normalSlots,
             emergencySlots: updatedDate.emergencySlots,
             emergencySlotCost: updatedDate.emergencySlotCost,
@@ -246,8 +257,15 @@ const AvailableDatesPage = () => {
       const monthDates = generateMonthDates()
       const datesToUpdate = monthDates.map(date => {
         const existingDate = getDateData(date)
+        // Ensure date is normalized to UTC midnight
+        const utcDate = new Date(Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          0, 0, 0, 0
+        ));
         return {
-          date: date.toISOString(),
+          date: utcDate.toISOString(),
           normalSlots: defaultNormalSlots,
           emergencySlots: defaultEmergencySlots,
           emergencySlotCost: defaultEmergencySlotCost,

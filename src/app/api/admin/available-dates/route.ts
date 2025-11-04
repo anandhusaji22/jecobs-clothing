@@ -66,8 +66,29 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { date, normalSlots, emergencySlots, emergencySlotCost, isAvailable } = body
     
-    // Check if date already exists
-    const existingDate = await AvailableDate.findOne({ date: new Date(date) })
+    // Normalize date to UTC midnight for consistent querying
+    const dateObj = new Date(date);
+    const utcDate = new Date(Date.UTC(
+      dateObj.getUTCFullYear(),
+      dateObj.getUTCMonth(),
+      dateObj.getUTCDate(),
+      0, 0, 0, 0
+    ));
+    
+    // Check if date already exists (using UTC date range for query)
+    const startOfDay = utcDate;
+    const endOfDay = new Date(Date.UTC(
+      dateObj.getUTCFullYear(),
+      dateObj.getUTCMonth(),
+      dateObj.getUTCDate(),
+      23, 59, 59, 999
+    ));
+    const existingDate = await AvailableDate.findOne({
+      date: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      }
+    })
     
     if (existingDate) {
       return NextResponse.json(
@@ -77,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
     
     const newAvailableDate = new AvailableDate({
-      date: new Date(date),
+      date: utcDate, // Use normalized UTC date
       normalSlots: normalSlots !== undefined ? normalSlots : 4,
       emergencySlots: emergencySlots !== undefined ? emergencySlots : 1,
       emergencySlotCost: emergencySlotCost !== undefined ? emergencySlotCost : 0,
@@ -122,9 +143,33 @@ export async function PUT(request: NextRequest) {
     for (const dateData of dates) {
       const { date, normalSlots, emergencySlots, emergencySlotCost, isAvailable } = dateData
       
+      // Normalize date to UTC midnight for consistent querying and storage
+      const dateObj = new Date(date);
+      const utcDate = new Date(Date.UTC(
+        dateObj.getUTCFullYear(),
+        dateObj.getUTCMonth(),
+        dateObj.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      
+      // Use UTC date range for query to match the exact date
+      const startOfDay = utcDate;
+      const endOfDay = new Date(Date.UTC(
+        dateObj.getUTCFullYear(),
+        dateObj.getUTCMonth(),
+        dateObj.getUTCDate(),
+        23, 59, 59, 999
+      ));
+      
       const updatedDate = await AvailableDate.findOneAndUpdate(
-        { date: new Date(date) },
         {
+          date: {
+            $gte: startOfDay,
+            $lte: endOfDay
+          }
+        },
+        {
+          date: utcDate, // Store normalized UTC date
           normalSlots: normalSlots !== undefined ? normalSlots : 4,
           emergencySlots: emergencySlots !== undefined ? emergencySlots : 1,
           emergencySlotCost: emergencySlotCost !== undefined ? emergencySlotCost : 0,
