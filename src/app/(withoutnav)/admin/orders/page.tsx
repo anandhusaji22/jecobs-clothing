@@ -50,14 +50,6 @@ const OrdersPage = () => {
   const [dateFilter, setDateFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  useEffect(() => {
-    fetchOrders()
-  }, [])
-
-  useEffect(() => {
-    applyFilters()
-  }, [orders, dateFilter, statusFilter])
-
   const applyFilters = useCallback(() => {
     let filtered = [...orders]
 
@@ -85,6 +77,14 @@ const OrdersPage = () => {
 
     setFilteredOrders(filtered)
   }, [orders, statusFilter, dateFilter])
+
+  useEffect(() => {
+    fetchOrders()
+  }, [])
+
+  useEffect(() => {
+    applyFilters()
+  }, [applyFilters])
 
   const getDaysUntilDelivery = (slotAllocation: OrderItem['slotAllocation']) => {
     if (!slotAllocation || slotAllocation.length === 0) return null

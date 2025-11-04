@@ -290,9 +290,14 @@ export default function CheckoutPage() {
             }
           });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Handle axios errors (400, 500, etc.)
-        const errorMessage = error?.response?.data?.error || error?.message || 'Failed to create order';
+        let errorMessage = 'Failed to create order';
+        if (axios.isAxiosError(error)) {
+          errorMessage = error.response?.data?.error || error.message || 'Failed to create order';
+        } else if (error instanceof Error) {
+          errorMessage = error.message;
+        }
         alert(errorMessage);
         // If slot validation failed, redirect to cart so user can remove items
         if (errorMessage.includes('slots available') || errorMessage.includes('not available') || errorMessage.includes('Not enough')) {
