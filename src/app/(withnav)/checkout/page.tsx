@@ -269,25 +269,49 @@ export default function CheckoutPage() {
       const isCartCheckout = orderData.cart && orderData.cart.items && orderData.cart.items.length > 0;
       
       let response;
-      if (isCartCheckout) {
-        // Create orders from cart
-        response = await axios.post('/api/orders/create-from-cart', {
-          paymentMethodId: selectedPaymentMethod || null
-        }, {
-          headers: {
-            'Authorization': `Bearer ${idToken}`
-          }
-        });
-      } else {
-        // Create single order (legacy)
-        response = await axios.post('/api/orders/create', {
-          ...orderData,
-          paymentMethodId: selectedPaymentMethod || null
-        }, {
-          headers: {
-            'Authorization': `Bearer ${idToken}`
-          }
-        });
+      try {
+        if (isCartCheckout) {
+          // Create orders from cart
+          response = await axios.post('/api/orders/create-from-cart', {
+            paymentMethodId: selectedPaymentMethod || null
+          }, {
+            headers: {
+              'Authorization': `Bearer ${idToken}`
+            }
+          });
+        } else {
+          // Create single order (legacy)
+          response = await axios.post('/api/orders/create', {
+            ...orderData,
+            paymentMethodId: selectedPaymentMethod || null
+          }, {
+            headers: {
+              'Authorization': `Bearer ${idToken}`
+            }
+          });
+        }
+      } catch (error: any) {
+        // Handle axios errors (400, 500, etc.)
+        const errorMessage = error?.response?.data?.error || error?.message || 'Failed to create order';
+        alert(errorMessage);
+        // If slot validation failed, redirect to cart so user can remove items
+        if (errorMessage.includes('slots available') || errorMessage.includes('not available') || errorMessage.includes('Not enough')) {
+          router.push('/cart');
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // Handle slot availability errors
+      if (!response.data.success) {
+        const errorMessage = response.data.error || 'Failed to create order';
+        alert(errorMessage);
+        // If slot validation failed, redirect to cart so user can remove items
+        if (errorMessage.includes('slots available') || errorMessage.includes('not available') || errorMessage.includes('Not enough')) {
+          router.push('/cart');
+        }
+        setIsLoading(false);
+        return;
       }
 
       if (response.data.success) {

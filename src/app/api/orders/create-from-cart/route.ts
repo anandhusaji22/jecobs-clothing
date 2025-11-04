@@ -46,6 +46,16 @@ export async function POST(request: NextRequest) {
     // Calculate total amount for all items
     const totalAmount = cart.items.reduce((sum: number, item: ICartItem) => sum + item.totalPrice, 0);
 
+    // STEP 1: Validate slot availability BEFORE creating any orders
+    // This ensures we don't create orders if slots are insufficient
+    const slotValidation = await validateCartSlotAvailability(cart.items);
+    if (!slotValidation.valid) {
+      return NextResponse.json(
+        { success: false, error: slotValidation.error },
+        { status: 400 }
+      );
+    }
+
     // Create orders for each cart item
     const orderIds: string[] = [];
     const createdOrders = [];
@@ -84,6 +94,11 @@ export async function POST(request: NextRequest) {
           throw new Error(`Available date not found for ${item.selectedDates[index]}`);
         }
         
+        // Calculate slots per date (distributed evenly across selected dates)
+        const normalSlotsPerDate = Math.floor(item.normalSlotsTotal / item.selectedDates.length);
+        const emergencySlotsPerDate = Math.floor(item.emergencySlotsTotal / item.selectedDates.length);
+        const totalSlotsPerDate = normalSlotsPerDate + emergencySlotsPerDate;
+        
         return {
           date: {
             _id: dateData._id.toString(),
@@ -94,9 +109,9 @@ export async function POST(request: NextRequest) {
             normalBookedSlots: dateData.normalBookedSlots,
             emergencyBookedSlots: dateData.emergencyBookedSlots
           },
-          normalSlotsUsed: Math.floor(item.normalSlotsTotal / item.selectedDates.length),
-          emergencySlotsUsed: Math.floor(item.emergencySlotsTotal / item.selectedDates.length),
-          totalSlotsUsed: Math.floor((item.normalSlotsTotal + item.emergencySlotsTotal) / item.selectedDates.length)
+          normalSlotsUsed: normalSlotsPerDate,
+          emergencySlotsUsed: emergencySlotsPerDate,
+          totalSlotsUsed: totalSlotsPerDate
         };
       });
 
@@ -189,9 +204,134 @@ export async function POST(request: NextRequest) {
 
   } catch (error: unknown) {
     console.error('Cart order creation error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create orders from cart';
     return NextResponse.json(
-      { success: false, error: 'Failed to create orders from cart' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
+  }
+}
+
+// Validate slot availability for all cart items before creating orders
+async function validateCartSlotAvailability(cartItems: ICartItem[]) {
+  try {
+    // Group all slot allocations by date ID
+    const dateSlotMap = new Map<string, { normalSlots: number; emergencySlots: number; dateId: string; dateString: string }>();
+    
+    // Process each cart item
+    for (const item of cartItems) {
+      // Fetch available dates for this item
+      const datePromises = item.selectedDates.map(async (dateStr: Date) => {
+        const date = new Date(dateStr);
+        const startDate = new Date(Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          0, 0, 0, 0
+        ));
+        const endDate = new Date(Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          23, 59, 59, 999
+        ));
+        const dateData = await AvailableDate.findOne({
+          date: {
+            $gte: startDate,
+            $lte: endDate
+          }
+        });
+        return dateData;
+      });
+
+      const availableDates = await Promise.all(datePromises);
+      
+      // Calculate slots needed per date for this item
+      const normalSlotsPerDate = Math.floor(item.normalSlotsTotal / item.selectedDates.length);
+      const emergencySlotsPerDate = Math.floor(item.emergencySlotsTotal / item.selectedDates.length);
+      
+      // Accumulate slots needed per date
+      for (let i = 0; i < availableDates.length; i++) {
+        const dateData = availableDates[i];
+        if (!dateData) {
+          return {
+            valid: false,
+            error: `Date ${item.selectedDates[i]} is no longer available`
+          };
+        }
+        
+        // Check if date is available
+        if (!dateData.isAvailable) {
+          return {
+            valid: false,
+            error: `Date ${dateData.date.toISOString().split('T')[0]} is not available for booking`
+          };
+        }
+        
+        const dateId = dateData._id.toString();
+        const existing = dateSlotMap.get(dateId);
+        
+        if (existing) {
+          // Add to existing slots needed for this date
+          existing.normalSlots += normalSlotsPerDate;
+          existing.emergencySlots += emergencySlotsPerDate;
+        } else {
+          // Initialize for this date
+          dateSlotMap.set(dateId, {
+            normalSlots: normalSlotsPerDate,
+            emergencySlots: emergencySlotsPerDate,
+            dateId: dateId,
+            dateString: dateData.date.toISOString()
+          });
+        }
+      }
+    }
+    
+    // Now validate that all dates have enough available slots
+    for (const [dateId, slotsNeeded] of dateSlotMap) {
+      const dateDoc = await AvailableDate.findById(dateId);
+      
+      if (!dateDoc) {
+        return {
+          valid: false,
+          error: `Date ${slotsNeeded.dateString} is no longer available`
+        };
+      }
+      
+      // Check if date is still available
+      if (!dateDoc.isAvailable) {
+        return {
+          valid: false,
+          error: `Date ${slotsNeeded.dateString} is not available for booking`
+        };
+      }
+      
+      const availableNormalSlots = dateDoc.normalSlots - dateDoc.normalBookedSlots;
+      const availableEmergencySlots = dateDoc.emergencySlots - dateDoc.emergencyBookedSlots;
+      
+      if (slotsNeeded.normalSlots > availableNormalSlots) {
+        const dateStr = new Date(slotsNeeded.dateString).toISOString().split('T')[0];
+        return {
+          valid: false,
+          error: `Not enough normal slots available for ${dateStr}. Available: ${availableNormalSlots}, Required: ${slotsNeeded.normalSlots}`
+        };
+      }
+      
+      if (slotsNeeded.emergencySlots > availableEmergencySlots) {
+        const dateStr = new Date(slotsNeeded.dateString).toISOString().split('T')[0];
+        return {
+          valid: false,
+          error: `Not enough emergency slots available for ${dateStr}. Available: ${availableEmergencySlots}, Required: ${slotsNeeded.emergencySlots}`
+        };
+      }
+    }
+    
+    return { valid: true };
+  } catch (error) {
+    console.error('Cart slot validation error:', error);
+    return {
+      valid: false,
+      error: 'Failed to validate slot availability'
+    };
   }
 }
