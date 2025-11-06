@@ -43,7 +43,11 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'createdAt';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limitParam = searchParams.get('limit');
+    // If limit is 0 or -1, fetch all products (no limit)
+    const limit = limitParam === '0' || limitParam === '-1' || limitParam === 'all' 
+      ? 0 
+      : parseInt(limitParam || '10');
 
     // Build query filters
     const query: Record<string, unknown> = { isActive: true };
@@ -63,22 +67,21 @@ export async function GET(request: NextRequest) {
       query.$text = { $search: search };
     }
 
-    // Calculate pagination
-    const skip = (page - 1) * limit;
+    // Calculate pagination (skip pagination if fetching all)
+    const skip = limit === 0 ? 0 : (page - 1) * limit;
 
     // Build sort object
     const sort: Record<string, 1 | -1> = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    // Execute query with pagination
-    const products = await Product.find()
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .lean();
+    // Execute query with pagination (limit(0) means no limit in MongoDB)
+    const queryBuilder = Product.find(query).sort(sort).skip(skip);
+    const products = limit === 0 
+      ? await queryBuilder.lean()
+      : await queryBuilder.limit(limit).lean();
 
-    // Get total count for pagination
-    const total = await Product.countDocuments();
+    // Get total count for pagination (using the same query filters)
+    const total = await Product.countDocuments(query);
 
     return NextResponse.json({
       success: true,

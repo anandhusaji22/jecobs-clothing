@@ -100,7 +100,8 @@ const InventoryPage = () => {
   const fetchProducts = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/products')
+      // Request all products (no limit - fetch everything)
+      const response = await fetch('/api/products?limit=0')
       if (response.ok) {
         const result = await response.json()
         // Handle structured API response
