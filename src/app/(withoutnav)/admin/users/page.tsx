@@ -4,6 +4,8 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { makeAuthenticatedRequest } from '@/lib/adminApi'
 
 interface UserItem {
@@ -49,6 +51,20 @@ const UsersPage = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [editingSizeId, setEditingSizeId] = useState<string | null>(null)
+  const [sizeError, setSizeError] = useState<string | null>(null)
+  const [savingSize, setSavingSize] = useState(false)
+  const [sizeForm, setSizeForm] = useState({
+    name: '',
+    category: '',
+    chest: '',
+    length: '',
+    shoulders: '',
+    sleeves: '',
+    neck: '',
+    waist: '',
+    backPleatLength: ''
+  })
 
   useEffect(() => {
     fetchUsers()
@@ -80,6 +96,104 @@ const UsersPage = () => {
       console.error('Error fetching user details:', error)
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const resetSizeForm = () => {
+    setSizeForm({
+      name: '',
+      category: '',
+      chest: '',
+      length: '',
+      shoulders: '',
+      sleeves: '',
+      neck: '',
+      waist: '',
+      backPleatLength: ''
+    })
+    setSizeError(null)
+  }
+
+  const handleStartEdit = (size: UserDetails['savedSizes'][0]) => {
+    setEditingSizeId(size._id)
+    setSizeForm({
+      name: size.name || '',
+      category: size.category && size.category !== 'Unknown' ? size.category : '',
+      chest: String(size.chest || ''),
+      length: String(size.length || ''),
+      shoulders: String(size.shoulders || ''),
+      sleeves: String(size.sleeves || ''),
+      neck: String(size.neck || ''),
+      waist: String(size.waist || ''),
+      backPleatLength: String(size.backPleatLength || '')
+    })
+    setSizeError(null)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingSizeId(null)
+    resetSizeForm()
+  }
+
+  const handleSizeInputChange = (field: keyof typeof sizeForm, value: string) => {
+    setSizeForm(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  const handleSaveSize = async () => {
+    if (!selectedUser || !editingSizeId) {
+      return
+    }
+
+    const requiredFields: Array<keyof typeof sizeForm> = [
+      'name',
+      'chest',
+      'length',
+      'shoulders',
+      'sleeves',
+      'neck',
+      'waist',
+      'backPleatLength'
+    ]
+
+    const missingField = requiredFields.find((field) => !sizeForm[field].trim())
+
+    if (missingField) {
+      setSizeError(`Please provide a value for ${missingField}`)
+      return
+    }
+
+    setSavingSize(true)
+
+    try {
+      await makeAuthenticatedRequest(
+        `/api/admin/users/${selectedUser._id}`,
+        'PUT',
+        {
+          sizeId: editingSizeId,
+          name: sizeForm.name.trim(),
+          category: sizeForm.category.trim() || undefined,
+          measurements: {
+            chest: sizeForm.chest.trim(),
+            length: sizeForm.length.trim(),
+            shoulders: sizeForm.shoulders.trim(),
+            sleeves: sizeForm.sleeves.trim(),
+            neck: sizeForm.neck.trim(),
+            waist: sizeForm.waist.trim(),
+            backPleatLength: sizeForm.backPleatLength.trim()
+          }
+        }
+      )
+
+      await fetchUserDetails(selectedUser._id)
+      handleCancelEdit()
+    } catch (error) {
+      console.error('Error updating size:', error)
+      setSizeError('Failed to update measurements. Please try again.')
+    } finally {
+      setSavingSize(false)
     }
   }
 
@@ -225,42 +339,112 @@ const UsersPage = () => {
                 <div className="space-y-3">
                   {selectedUser.savedSizes.map((size) => (
                     <div key={size._id} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                      <div className="mb-2">
-                        <span className="text-sm font-semibold text-gray-900">{size.name}</span>
-                        {size.category !== 'Unknown' && (
-                          <span className="ml-2 text-xs text-gray-500">({size.category})</span>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs text-gray-700">
-                        <div className="bg-white p-2 rounded border border-gray-100">
-                          <span className="font-medium text-gray-500">Chest:</span>
-                          <p className="mt-0.5 font-semibold">{size.chest}&quot;</p>
+                      {editingSizeId === size._id ? (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`size-name-${size._id}`} className="text-xs text-gray-500">Size Name</Label>
+                              <Input
+                                id={`size-name-${size._id}`}
+                                value={sizeForm.name}
+                                onChange={(e) => handleSizeInputChange('name', e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`size-category-${size._id}`} className="text-xs text-gray-500">Category (optional)</Label>
+                              <Input
+                                id={`size-category-${size._id}`}
+                                value={sizeForm.category}
+                                onChange={(e) => handleSizeInputChange('category', e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {(['chest','length','shoulders','sleeves','neck','waist','backPleatLength'] as const).map((field) => (
+                              <div key={field} className="space-y-1.5">
+                                <Label className="text-xs text-gray-500 capitalize">{field === 'backPleatLength' ? 'Back Pleat Length' : field}</Label>
+                                <Input
+                                  value={sizeForm[field]}
+                                  onChange={(e) => handleSizeInputChange(field, e.target.value)}
+                                  placeholder='e.g. 42"'
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          {sizeError && (
+                            <p className="text-red-500 text-xs">{sizeError}</p>
+                          )}
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleCancelEdit}
+                              disabled={savingSize}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={handleSaveSize}
+                              disabled={savingSize}
+                            >
+                              {savingSize ? 'Saving...' : 'Save'}
+                            </Button>
+                          </div>
                         </div>
-                        <div className="bg-white p-2 rounded border border-gray-100">
-                          <span className="font-medium text-gray-500">Length:</span>
-                          <p className="mt-0.5 font-semibold">{size.length}&quot;</p>
-                        </div>
-                        <div className="bg-white p-2 rounded border border-gray-100">
-                          <span className="font-medium text-gray-500">Shoulders:</span>
-                          <p className="mt-0.5 font-semibold">{size.shoulders}&quot;</p>
-                        </div>
-                        <div className="bg-white p-2 rounded border border-gray-100">
-                          <span className="font-medium text-gray-500">Sleeves:</span>
-                          <p className="mt-0.5 font-semibold">{size.sleeves}&quot;</p>
-                        </div>
-                        <div className="bg-white p-2 rounded border border-gray-100">
-                          <span className="font-medium text-gray-500">Neck:</span>
-                          <p className="mt-0.5 font-semibold">{size.neck}&quot;</p>
-                        </div>
-                        <div className="bg-white p-2 rounded border border-gray-100">
-                          <span className="font-medium text-gray-500">Waist:</span>
-                          <p className="mt-0.5 font-semibold">{size.waist}&quot;</p>
-                        </div>
-                        <div className="bg-white p-2 rounded border border-gray-100">
-                          <span className="font-medium text-gray-500">Back Pleat Length:</span>
-                          <p className="mt-0.5 font-semibold">{size.backPleatLength}&quot;</p>
-                        </div>
-                      </div>
+                      ) : (
+                        <>
+                          <div className="mb-2 flex items-start justify-between">
+                            <div>
+                              <span className="text-sm font-semibold text-gray-900">{size.name}</span>
+                              {size.category !== 'Unknown' && (
+                                <span className="ml-2 text-xs text-gray-500">({size.category})</span>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-xs"
+                              onClick={() => handleStartEdit(size)}
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs text-gray-700">
+                            <div className="bg-white p-2 rounded border border-gray-100">
+                              <span className="font-medium text-gray-500">Chest:</span>
+                              <p className="mt-0.5 font-semibold">{size.chest}&quot;</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border border-gray-100">
+                              <span className="font-medium text-gray-500">Length:</span>
+                              <p className="mt-0.5 font-semibold">{size.length}&quot;</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border border-gray-100">
+                              <span className="font-medium text-gray-500">Shoulders:</span>
+                              <p className="mt-0.5 font-semibold">{size.shoulders}&quot;</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border border-gray-100">
+                              <span className="font-medium text-gray-500">Sleeves:</span>
+                              <p className="mt-0.5 font-semibold">{size.sleeves}&quot;</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border border-gray-100">
+                              <span className="font-medium text-gray-500">Neck:</span>
+                              <p className="mt-0.5 font-semibold">{size.neck}&quot;</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border border-gray-100">
+                              <span className="font-medium text-gray-500">Waist:</span>
+                              <p className="mt-0.5 font-semibold">{size.waist}&quot;</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border border-gray-100">
+                              <span className="font-medium text-gray-500">Back Pleat Length:</span>
+                              <p className="mt-0.5 font-semibold">{size.backPleatLength}&quot;</p>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                   {selectedUser.savedSizes.length === 0 && (

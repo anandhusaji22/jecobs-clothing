@@ -99,3 +99,84 @@ export async function GET(
     )
   }
 }
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireAdmin(request);
+
+    await connectToDatabase()
+
+    const { id: userId } = await params
+    const body = await request.json()
+    const { sizeId, name, category, measurements } = body as {
+      sizeId?: string
+      name?: string
+      category?: string
+      measurements?: {
+        chest?: string
+        length?: string
+        shoulders?: string
+        sleeves?: string
+        neck?: string
+        waist?: string
+        backPleatLength?: string
+      }
+    }
+
+    if (!sizeId || !name || !measurements) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    const user = await User.findById(userId).lean() as AnyDocument
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
+    const existingSize = await UserSize.findOne({
+      _id: sizeId,
+      userId: user.firebaseUid
+    })
+
+    if (!existingSize) {
+      return NextResponse.json(
+        { success: false, error: 'Size not found for this user' },
+        { status: 404 }
+      )
+    }
+
+    existingSize.name = name.trim()
+    existingSize.type = (category?.trim() || existingSize.type || 'general')
+    existingSize.measurements = {
+      chest: measurements.chest?.trim() || '',
+      length: measurements.length?.trim() || '',
+      shoulders: measurements.shoulders?.trim() || '',
+      sleeves: measurements.sleeves?.trim() || '',
+      neck: measurements.neck?.trim() || '',
+      waist: measurements.waist?.trim() || '',
+      backPleatLength: measurements.backPleatLength?.trim() || ''
+    }
+
+    await existingSize.save()
+
+    return NextResponse.json({
+      success: true,
+      message: 'Measurements updated successfully'
+    })
+  } catch (error) {
+    console.error('Error updating user measurements:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to update measurements' },
+      { status: 500 }
+    )
+  }
+}
