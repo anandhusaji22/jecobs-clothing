@@ -60,6 +60,7 @@ const OrdersPage = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [updateLoading, setUpdateLoading] = useState(false)
+  const [paymentUpdateLoading, setPaymentUpdateLoading] = useState(false)
   const [dateFilter, setDateFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedOrderSizeDetails, setSelectedOrderSizeDetails] = useState<SavedSize | null>(null)
@@ -199,6 +200,31 @@ const OrdersPage = () => {
       console.error('Error updating order status:', error)
     } finally {
       setUpdateLoading(false)
+    }
+  }
+
+  const handlePaymentStatusUpdate = async (orderId: string, newPaymentStatus: string) => {
+    try {
+      setPaymentUpdateLoading(true)
+      const response = await makeAuthenticatedRequest(`/api/admin/orders/${orderId}`, 'PUT', {
+        paymentStatus: newPaymentStatus
+      })
+      
+      if (response.data.success) {
+        setOrders(orders.map(order => 
+          order._id === orderId 
+            ? { ...order, paymentStatus: newPaymentStatus }
+            : order
+        ))
+        
+        if (selectedOrder && selectedOrder._id === orderId) {
+          setSelectedOrder({ ...selectedOrder, paymentStatus: newPaymentStatus })
+        }
+      }
+    } catch (error) {
+      console.error('Error updating payment status:', error)
+    } finally {
+      setPaymentUpdateLoading(false)
     }
   }
 
@@ -642,11 +668,26 @@ const OrdersPage = () => {
               </div>
 
               <div className="pt-3 lg:pt-4 border-t">
-                <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-2">
-                  <span className="font-medium text-sm lg:text-base">Payment Status:</span>
-                  <Badge variant={selectedOrder.paymentStatus === 'completed' ? 'default' : 'secondary'} className="text-xs w-fit">
-                    {selectedOrder.paymentStatus}
-                  </Badge>
+                <h3 className="font-semibold mb-2 text-sm lg:text-base">Update Payment Status</h3>
+                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4">
+                  <Select
+                    value={selectedOrder.paymentStatus}
+                    onValueChange={(value) => handlePaymentStatusUpdate(selectedOrder._id, value)}
+                    disabled={paymentUpdateLoading}
+                  >
+                    <SelectTrigger className="w-full lg:w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                      <SelectItem value="refunded">Refunded</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {paymentUpdateLoading && (
+                    <span className="text-xs lg:text-sm text-gray-500">Updating...</span>
+                  )}
                 </div>
               </div>
             </div>

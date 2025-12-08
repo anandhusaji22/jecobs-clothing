@@ -16,20 +16,33 @@ export async function PUT(
     
     await connectToDatabase()
     
-    const { status } = await request.json()
+    const { status, paymentStatus } = await request.json()
     const { id: orderId } = await params
     
-    if (!status) {
+    if (!status && !paymentStatus) {
       return NextResponse.json(
-        { success: false, error: 'Status is required' },
+        { success: false, error: 'Status or paymentStatus is required' },
         { status: 400 }
       )
     }
     
-    // Update the order status
+    // Build update object
+    const updateData: { status?: string; paymentStatus?: string; paymentCompletedAt?: Date } = {}
+    if (status) {
+      updateData.status = status
+    }
+    if (paymentStatus) {
+      updateData.paymentStatus = paymentStatus
+      // Set paymentCompletedAt if payment is completed
+      if (paymentStatus === 'completed') {
+        updateData.paymentCompletedAt = new Date()
+      }
+    }
+    
+    // Update the order
     const updatedOrder = await Order.findByIdAndUpdate(
       orderId,
-      { status },
+      updateData,
       { new: true }
     )
     
@@ -40,42 +53,44 @@ export async function PUT(
       )
     }
     
-    // Get user details for email
-    const user = await User.findOne({ 
-      firebaseUid: updatedOrder.userFirebaseUid 
-    })
-    
-    // Send status update email if user found
-    if (user && user.email) {
-      try {
-        const deliveryDates = updatedOrder.slotAllocation.map((slot: { date: { date: string } }) => 
-          new Date(slot.date.date).toLocaleDateString('en-US', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric'
+    // Get user details for email (only send email if order status changed)
+    if (status) {
+      const user = await User.findOne({ 
+        firebaseUid: updatedOrder.userFirebaseUid 
+      })
+      
+      // Send status update email if user found
+      if (user && user.email) {
+        try {
+          const deliveryDates = updatedOrder.slotAllocation.map((slot: { date: { date: string } }) => 
+            new Date(slot.date.date).toLocaleDateString('en-US', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric'
+            })
+          )
+          
+          await sendOrderStatusUpdateEmail({
+            customerName: user.name,
+            customerEmail: user.email,
+            customerPhone: user.phoneNumber || '',
+            orderNumber: `#${updatedOrder._id.toString().slice(-6)}`,
+            productName: updatedOrder.productName,
+            productImage: updatedOrder.productImage || '',
+            quantity: updatedOrder.quantity,
+            totalPrice: updatedOrder.totalPrice,
+            deliveryDates,
+            orderDate: new Date(updatedOrder.createdAt).toLocaleDateString('en-US', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric'
+            }),
+            status
           })
-        )
-        
-        await sendOrderStatusUpdateEmail({
-          customerName: user.name,
-          customerEmail: user.email,
-          customerPhone: user.phoneNumber || '',
-          orderNumber: `#${updatedOrder._id.toString().slice(-6)}`,
-          productName: updatedOrder.productName,
-          productImage: updatedOrder.productImage || '',
-          quantity: updatedOrder.quantity,
-          totalPrice: updatedOrder.totalPrice,
-          deliveryDates,
-          orderDate: new Date(updatedOrder.createdAt).toLocaleDateString('en-US', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric'
-          }),
-          status
-        })
-      } catch (emailError) {
-        console.error('Failed to send status update email:', emailError)
-        // Don't fail the API call if email fails
+        } catch (emailError) {
+          console.error('Failed to send status update email:', emailError)
+          // Don't fail the API call if email fails
+        }
       }
     }
     
