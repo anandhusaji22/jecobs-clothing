@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
-import User from '@/models/User';
+import User, { IUser } from '@/models/User';
 import { requireAdmin } from '@/lib/auth-helpers';
 import { auth } from '@/lib/firebase/admin';
 
@@ -31,7 +31,7 @@ export async function POST(
       );
     }
 
-    const user = await User.findById(userId).lean();
+    const user = await User.findById(userId).lean() as Pick<IUser, 'firebaseUid'> | null;
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
