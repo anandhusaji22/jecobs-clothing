@@ -51,6 +51,11 @@ const UsersPage = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [passwordChangeUser, setPasswordChangeUser] = useState<UserItem | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null)
+  const [resetPasswordMessage, setResetPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingSizeId, setEditingSizeId] = useState<string | null>(null)
   const [sizeError, setSizeError] = useState<string | null>(null)
   const [savingSize, setSavingSize] = useState(false)
@@ -197,6 +202,50 @@ const UsersPage = () => {
     }
   }
 
+  const openPasswordChangeDialog = (user: UserItem) => {
+    setPasswordChangeUser(user)
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordChangeError(null)
+    setResetPasswordMessage(null)
+  }
+
+  const closePasswordChangeDialog = () => {
+    setPasswordChangeUser(null)
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordChangeError(null)
+  }
+
+  const handleChangePasswordSubmit = async () => {
+    if (!passwordChangeUser) return
+    setPasswordChangeError(null)
+    if (newPassword.length < 6) {
+      setPasswordChangeError('Password must be at least 6 characters')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordChangeError('Passwords do not match')
+      return
+    }
+    try {
+      const response = await makeAuthenticatedRequest(
+        `/api/admin/users/${passwordChangeUser._id}/reset-password`,
+        'POST',
+        { newPassword }
+      )
+      if (response.data.success) {
+        setResetPasswordMessage({ type: 'success', text: response.data.message || 'Password updated successfully.' })
+        closePasswordChangeDialog()
+      } else {
+        setPasswordChangeError(response.data.error || 'Failed to update password.')
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } }
+      setPasswordChangeError(err.response?.data?.error || 'Failed to update password. Please try again.')
+    }
+  }
+
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'completed':
@@ -225,6 +274,20 @@ const UsersPage = () => {
         <h1 className="text-xl lg:text-2xl font-bold text-gray-900">Users</h1>
         <p className="text-gray-600 text-xs lg:text-sm mt-1">Manage customer information and details</p>
       </div>
+
+      {/* Reset password feedback */}
+      {resetPasswordMessage && (
+        <div
+          className={`rounded-lg px-4 py-3 text-sm ${
+            resetPasswordMessage.type === 'success'
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-red-50 text-red-800 border border-red-200'
+          }`}
+          role="alert"
+        >
+          {resetPasswordMessage.text}
+        </div>
+      )}
 
       {/* Table */}
       <Card className="overflow-hidden">
@@ -277,15 +340,25 @@ const UsersPage = () => {
                     </span>
                   </td>
                   <td className="px-3 lg:px-6 py-2 lg:py-4 text-xs lg:text-sm">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-gray-700 hover:text-gray-900 text-xs lg:text-sm px-2 lg:px-3 py-1 lg:py-2"
-                      onClick={() => fetchUserDetails(user._id)}
-                      disabled={detailLoading}
-                    >
-                      View
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-gray-700 hover:text-gray-900 text-xs lg:text-sm px-2 lg:px-3 py-1 lg:py-2"
+                        onClick={() => fetchUserDetails(user._id)}
+                        disabled={detailLoading}
+                      >
+                        View
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs lg:text-sm px-2 lg:px-3 py-1 lg:py-2"
+                        onClick={() => openPasswordChangeDialog(user)}
+                      >
+                        Change password
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -299,6 +372,57 @@ const UsersPage = () => {
           <p className="text-gray-600 text-sm lg:text-base">No users found.</p>
         </Card>
       )}
+
+      {/* Change password dialog */}
+      <Dialog open={!!passwordChangeUser} onOpenChange={(open) => !open && closePasswordChangeDialog()}>
+        <DialogContent className="max-w-sm font-poppins mx-4">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              Change password
+              {passwordChangeUser && (
+                <span className="block text-sm font-normal text-gray-500 mt-1">
+                  {passwordChangeUser.name} ({passwordChangeUser.email})
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min 6 characters"
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                autoComplete="new-password"
+              />
+            </div>
+            {passwordChangeError && (
+              <p className="text-sm text-red-600">{passwordChangeError}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={closePasswordChangeDialog}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleChangePasswordSubmit}>
+                Update password
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* User Details Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -328,6 +452,16 @@ const UsersPage = () => {
                     <label className="text-sm font-medium text-gray-500">Address :</label>
                     <p className="text-sm">{selectedUser.address}</p>
                   </div>
+                </div>
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openPasswordChangeDialog({ _id: selectedUser._id, name: selectedUser.name, email: selectedUser.email, phoneNumber: selectedUser.phoneNumber, address: selectedUser.address, orders: selectedUser.orderHistory?.length ?? 0, firebaseUid: '' })}
+                  >
+                    Change password
+                  </Button>
                 </div>
               </div>
 
