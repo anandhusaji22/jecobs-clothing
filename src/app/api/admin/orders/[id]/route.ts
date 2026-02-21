@@ -3,8 +3,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectToDatabase from '@/lib/db'
 import Order from '@/models/Order'
 import User from '@/models/User'
+import AvailableDate from '@/models/AvailableDate'
 import { sendOrderStatusUpdateEmail } from '@/lib/emailService'
 import { requireAdmin } from '@/lib/auth-helpers'
+
+// Update slot availability when payment is confirmed (same logic as verify-payment)
+async function updateSlotAvailability(slotAllocation: Array<{ date: { _id: string }; normalSlotsUsed: number; emergencySlotsUsed: number }>) {
+  if (!slotAllocation?.length) return
+  for (const allocation of slotAllocation) {
+    await AvailableDate.findByIdAndUpdate(allocation.date._id, {
+      $inc: {
+        normalBookedSlots: allocation.normalSlotsUsed,
+        emergencyBookedSlots: allocation.emergencySlotsUsed
+      },
+      $set: { updatedAt: new Date() }
+    })
+  }
+}
 
 export async function PUT(
   request: NextRequest,
@@ -23,6 +38,15 @@ export async function PUT(
       return NextResponse.json(
         { success: false, error: 'Status or paymentStatus is required' },
         { status: 400 }
+      )
+    }
+    
+    // Fetch current order to check if we're newly confirming payment (for slot update)
+    const currentOrder = await Order.findById(orderId)
+    if (!currentOrder) {
+      return NextResponse.json(
+        { success: false, error: 'Order not found' },
+        { status: 404 }
       )
     }
     
@@ -51,6 +75,16 @@ export async function PUT(
         { success: false, error: 'Order not found' },
         { status: 404 }
       )
+    }
+    
+    // When admin sets payment to "completed", apply order's slots to AvailableDate (update booked counts)
+    if (paymentStatus === 'completed' && currentOrder.paymentStatus !== 'completed') {
+      try {
+        await updateSlotAvailability(updatedOrder.slotAllocation)
+      } catch (slotError) {
+        console.error('Failed to update slot availability after payment confirm:', slotError)
+        // Don't fail the API – order and payment are already updated
+      }
     }
     
     // Get user details for email (only send email if order status changed)
