@@ -9,7 +9,23 @@ import AvailableDate from '@/models/AvailableDate';
 import crypto from 'crypto';
 import { sendOrderConfirmationEmail } from '@/lib/emailService';
 import { format } from 'date-fns';
-import { verifyIdToken } from '@/lib/firebase/admin';
+import { auth } from '@/lib/firebase/admin';
+
+async function getUserId(request: NextRequest): Promise<string | null> {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.split('Bearer ')[1];
+  if (token.startsWith('email-') && token.length > 20) {
+    const uid = request.headers.get('x-user-id');
+    return uid?.trim() || null;
+  }
+  try {
+    const decoded = await auth.verifyIdToken(token);
+    return decoded.uid;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,18 +39,13 @@ export async function POST(request: NextRequest) {
       paymentMethod
     } = await request.json();
 
-    // Get auth token
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
+    const userId = await getUserId(request);
+    if (!userId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
     }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await verifyIdToken(token);
-    const userId = decodedToken.uid;
 
     // Verify payment signature
     const generatedSignature = crypto

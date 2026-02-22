@@ -65,20 +65,23 @@ function CartPage() {
 
   const fetchCart = useCallback(async () => {
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-      
-      const token = await currentUser.getIdToken();
-      const response = await axios.get('/api/cart', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      let headers: Record<string, string>;
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken();
+        headers = { Authorization: `Bearer ${token}` };
+      } else {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('firebaseToken') : null;
+        if (!stored?.startsWith('email-') || !user.uid) return;
+        headers = { Authorization: `Bearer ${stored}`, 'X-User-Id': user.uid };
+      }
+      const response = await axios.get('/api/cart', { headers });
       setCart(response.data.data);
     } catch (error) {
       console.error('Error fetching cart:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user.uid]);
 
   const fetchUserAddresses = useCallback(async () => {
     try {
@@ -118,13 +121,16 @@ function CartPage() {
 
   const handleRemoveItem = async (itemId: string) => {
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-      
-      const token = await currentUser.getIdToken();
-      const response = await axios.delete(`/api/cart?itemId=${itemId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      let headers: Record<string, string>;
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken();
+        headers = { Authorization: `Bearer ${token}` };
+      } else {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('firebaseToken') : null;
+        if (!stored?.startsWith('email-') || !user.uid) return;
+        headers = { Authorization: `Bearer ${stored}`, 'X-User-Id': user.uid };
+      }
+      const response = await axios.delete(`/api/cart?itemId=${itemId}`, { headers });
       setCart(response.data.data);
     } catch (error) {
       console.error('Error removing item:', error);
@@ -138,16 +144,17 @@ function CartPage() {
       if (!selectedAddress) return;
 
       const fullAddress = `${selectedAddress.street}, ${selectedAddress.city}, ${selectedAddress.state} ${selectedAddress.zipCode}, ${selectedAddress.country}`;
-      
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-      
-      const token = await currentUser.getIdToken();
-      const response = await axios.put('/api/cart', {
-        deliveryAddress: fullAddress
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+
+      let headers: Record<string, string>;
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken();
+        headers = { Authorization: `Bearer ${token}` };
+      } else {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('firebaseToken') : null;
+        if (!stored?.startsWith('email-') || !user.uid) return;
+        headers = { Authorization: `Bearer ${stored}`, 'X-User-Id': user.uid };
+      }
+      const response = await axios.put('/api/cart', { deliveryAddress: fullAddress }, { headers });
       setCart(response.data.data);
     } catch (error) {
       console.error('Error updating address:', error);

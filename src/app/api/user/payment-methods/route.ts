@@ -5,34 +5,37 @@ import SavedPayment from '@/models/SavedPayment'
 
 export const runtime = 'nodejs';
 
+async function getUserId(request: NextRequest): Promise<string | null> {
+  const authHeader = request.headers.get('authorization')
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const token = authHeader.split('Bearer ')[1]
+  if (token.startsWith('email-') && token.length > 20) {
+    const uid = request.headers.get('x-user-id')
+    return uid?.trim() || null
+  }
+  try {
+    const decoded = await auth.verifyIdToken(token)
+    return decoded.uid
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
+    const userId = await getUserId(request)
+    if (!userId) {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    const token = authHeader.split('Bearer ')[1]
-    const decodedToken = await auth.verifyIdToken(token)
-    
-    if (!decodedToken) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid token' },
-        { status: 401 }
-      )
-    }
-
-    // Connect to database
     await dbConnect()
 
-    // Fetch user's saved payment methods
     const paymentMethods = await SavedPayment.find({ 
-      userId: decodedToken.uid 
-    }).sort({ isDefault: -1, lastUsedAt: -1 }) // Default first, then by last used
+      userId 
+    }).sort({ isDefault: -1, lastUsedAt: -1 })
 
     return NextResponse.json({
       success: true,
@@ -50,28 +53,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
+    const userId = await getUserId(request)
+    if (!userId) {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    const token = authHeader.split('Bearer ')[1]
-    const decodedToken = await auth.verifyIdToken(token)
-    
-    if (!decodedToken) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid token' },
-        { status: 401 }
-      )
-    }
+    await request.json()
 
-    await request.json() // paymentMethodData - will be used when implementing actual saving
-
-    // Connect to database
     await dbConnect()
 
     // For now, just return success - can be extended later
@@ -92,26 +83,14 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
+    const userId = await getUserId(request)
+    if (!userId) {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    const token = authHeader.split('Bearer ')[1]
-    const decodedToken = await auth.verifyIdToken(token)
-    
-    if (!decodedToken) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid token' },
-        { status: 401 }
-      )
-    }
-
-    // Get payment method ID from query params
     const { searchParams } = new URL(request.url)
     const paymentMethodId = searchParams.get('id')
 
@@ -122,13 +101,11 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Connect to database
     await dbConnect()
 
-    // Delete the payment method (only if it belongs to the user)
     const result = await SavedPayment.findOneAndDelete({
       _id: paymentMethodId,
-      userId: decodedToken.uid
+      userId
     })
 
     if (!result) {

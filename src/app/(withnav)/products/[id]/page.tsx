@@ -289,20 +289,25 @@ function Page() {
         totalPrice: priceInfo.totalPrice
       };
 
-      // Get Firebase auth token
-      const token = await auth.currentUser?.getIdToken();
+      // Get auth token (Firebase or email-login)
+      let token: string | null = null;
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        token = await currentUser.getIdToken();
+      } else if (typeof window !== 'undefined' && user.uid) {
+        const stored = localStorage.getItem('firebaseToken');
+        if (stored?.startsWith('email-')) token = stored;
+      }
       if (!token) {
         alert('Authentication error. Please login again.');
         router.push('/login');
         return;
       }
 
-      // Add item to cart via API
-      const response = await axios.post('/api/cart', { item: cartItem }, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (token.startsWith('email-') && user.uid) headers['X-User-Id'] = user.uid;
+
+      const response = await axios.post('/api/cart', { item: cartItem }, { headers });
 
       if (response.data.success) {
         alert('Item added to cart successfully!');

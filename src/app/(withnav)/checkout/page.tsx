@@ -136,23 +136,25 @@ export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(true)
 
+  const getAuthHeaders = React.useCallback(async (): Promise<Record<string, string>> => {
+    if (auth.currentUser) {
+      const token = await auth.currentUser.getIdToken()
+      return { Authorization: `Bearer ${token}` }
+    }
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('firebaseToken') : null
+    if (stored?.startsWith('email-') && user.uid) {
+      return { Authorization: `Bearer ${stored}`, 'X-User-Id': user.uid }
+    }
+    throw new Error('User not authenticated')
+  }, [user.uid])
+
   const fetchPaymentMethods = React.useCallback(async () => {
     if (user.authLoading || !user.uid) return
     
     setLoadingPaymentMethods(true)
     try {
-      // Get Firebase ID token
-      const currentUser = auth.currentUser
-      if (!currentUser) {
-        throw new Error('User not authenticated')
-      }
-      const idToken = await currentUser.getIdToken()
-      
-      const response = await axios.get('/api/user/payment-methods', {
-        headers: {
-          'Authorization': `Bearer ${idToken}`
-        }
-      })
+      const headers = await getAuthHeaders()
+      const response = await axios.get('/api/user/payment-methods', { headers })
       if (response.data.success) {
         setPaymentMethods(response.data.paymentMethods || [])
         // Auto-select default payment method
@@ -168,7 +170,7 @@ export default function CheckoutPage() {
     } finally {
       setLoadingPaymentMethods(false)
     }
-  }, [user.uid, user.authLoading])
+  }, [user.uid, user.authLoading, getAuthHeaders])
 
   useEffect(() => {
     // Wait for auth loading to complete
@@ -185,18 +187,8 @@ export default function CheckoutPage() {
     // Fetch cart data from API
     const fetchCartData = async () => {
       try {
-        const currentUser = auth.currentUser
-        if (!currentUser) {
-          router.push('/login')
-          return
-        }
-        
-        const idToken = await currentUser.getIdToken()
-        const response = await axios.get('/api/cart', {
-          headers: {
-            'Authorization': `Bearer ${idToken}`
-          }
-        })
+        const headers = await getAuthHeaders()
+        const response = await axios.get('/api/cart', { headers })
         
         if (response.data.success && response.data.data) {
           const cart = response.data.data
@@ -226,11 +218,15 @@ export default function CheckoutPage() {
         }
       } catch (error) {
         console.error('Error fetching cart:', error)
-        alert('Failed to load cart data')
-        router.push('/cart')
+        if (error instanceof Error && error.message === 'User not authenticated') {
+          router.push('/login')
+        } else {
+          alert('Failed to load cart data')
+          router.push('/cart')
+        }
       }
     }
-    
+
     fetchCartData()
 
     // Fetch user's saved payment methods
@@ -248,7 +244,7 @@ export default function CheckoutPage() {
         document.body.removeChild(script)
       }
     }
-  }, [router, user.uid, user.authLoading, fetchPaymentMethods])
+  }, [router, user.uid, user.authLoading, fetchPaymentMethods, getAuthHeaders])
 
   const handleConfirmOrder = async () => {
     if (!orderData) {
@@ -258,37 +254,20 @@ export default function CheckoutPage() {
 
     setIsLoading(true)
     try {
-      // Get Firebase ID token
-      const currentUser = auth.currentUser
-      if (!currentUser) {
-        throw new Error('User not authenticated')
-      }
-      const idToken = await currentUser.getIdToken()
-      
-      // Check if this is a cart-based checkout or single order
+      const headers = await getAuthHeaders()
       const isCartCheckout = orderData.cart && orderData.cart.items && orderData.cart.items.length > 0;
-      
+
       let response;
       try {
         if (isCartCheckout) {
-          // Create orders from cart
           response = await axios.post('/api/orders/create-from-cart', {
             paymentMethodId: selectedPaymentMethod || null
-          }, {
-            headers: {
-              'Authorization': `Bearer ${idToken}`
-            }
-          });
+          }, { headers });
         } else {
-          // Create single order (legacy)
           response = await axios.post('/api/orders/create', {
             ...orderData,
             paymentMethodId: selectedPaymentMethod || null
-          }, {
-            headers: {
-              'Authorization': `Bearer ${idToken}`
-            }
-          });
+          }, { headers });
         }
       } catch (error: unknown) {
         // Handle axios errors (400, 500, etc.)
@@ -334,14 +313,7 @@ export default function CheckoutPage() {
           order_id: razorpayOrderId,
           handler: async (response: RazorpayResponse) => {
             try {
-              // Get Firebase ID token
-              const currentUser = auth.currentUser
-              if (!currentUser) {
-                throw new Error('User not authenticated')
-              }
-              const idToken = await currentUser.getIdToken()
-              
-              // Verify payment - use different endpoint for cart vs single order
+              const headers = await getAuthHeaders()
               const verifyEndpoint = isCartCheckout ? '/api/orders/verify-cart-payment' : '/api/orders/verify-payment';
               const verifyPayload = isCartCheckout ? {
                 orderIds: finalOrderIds,
@@ -354,12 +326,7 @@ export default function CheckoutPage() {
                 razorpayOrderId: response.razorpay_order_id,
                 razorpaySignature: response.razorpay_signature
               };
-              
-              const verifyResponse = await axios.post(verifyEndpoint, verifyPayload, {
-                headers: {
-                  'Authorization': `Bearer ${idToken}`
-                }
-              })
+              const verifyResponse = await axios.post(verifyEndpoint, verifyPayload, { headers })
 
               if (verifyResponse.data.success) {
                 // Clear pending order from sessionStorage
@@ -386,36 +353,19 @@ export default function CheckoutPage() {
           },
           modal: {
             ondismiss: async () => {
-              // User closed the payment modal
               try {
-                const currentUser = auth.currentUser
-                if (!currentUser) return
-                
-                const idToken = await currentUser.getIdToken()
-                
-                // Mark order(s) as cancelled
+                const headers = await getAuthHeaders()
                 if (isCartCheckout) {
-                  // Cancel all cart orders
                   await axios.post('/api/orders/payment-failed', {
                     orderIds: finalOrderIds,
                     error: 'Payment cancelled by user'
-                  }, {
-                    headers: {
-                      'Authorization': `Bearer ${idToken}`
-                    }
-                  });
+                  }, { headers });
                 } else {
-                  // Cancel single order
                   await axios.post('/api/orders/payment-failed', {
                     orderId: orderId,
                     error: 'Payment cancelled by user'
-                  }, {
-                    headers: {
-                      'Authorization': `Bearer ${idToken}`
-                    }
-                  });
+                  }, { headers });
                 }
-                
                 alert('Payment cancelled. Your order has been cancelled.')
                 router.push('/cart')
               } catch (error) {
@@ -431,34 +381,18 @@ export default function CheckoutPage() {
         rzp.on('payment.failed', async (response: unknown) => {
           try {
             const paymentError = response as { error: { description: string } }
-            const currentUser = auth.currentUser
-            if (!currentUser) return
-            
-            const idToken = await currentUser.getIdToken()
-            
-            // Mark order(s) as cancelled/failed
+            const headers = await getAuthHeaders()
             if (isCartCheckout) {
-              // Cancel all cart orders
               await axios.post('/api/orders/payment-failed', {
                 orderIds: finalOrderIds,
                 error: paymentError.error.description
-              }, {
-                headers: {
-                  'Authorization': `Bearer ${idToken}`
-                }
-              });
+              }, { headers });
             } else {
-              // Cancel single order
               await axios.post('/api/orders/payment-failed', {
                 orderId: orderId,
                 error: paymentError.error.description
-              }, {
-                headers: {
-                  'Authorization': `Bearer ${idToken}`
-                }
-              });
+              }, { headers });
             }
-            
             alert(`Payment failed: ${paymentError.error.description}. Your order has been cancelled.`)
             router.push('/orders')
           } catch (error) {

@@ -3,29 +3,40 @@ import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import Cart, { ICartItem } from '@/models/Cart';
 import AvailableDate from '@/models/AvailableDate';
-import { verifyIdToken } from '@/lib/firebase/admin';
+import { auth } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
+
+async function getUserId(request: NextRequest): Promise<string | null> {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.split('Bearer ')[1];
+  if (token.startsWith('email-') && token.length > 20) {
+    const uid = request.headers.get('x-user-id');
+    return uid?.trim() || null;
+  }
+  try {
+    const decoded = await auth.verifyIdToken(token);
+    return decoded.uid;
+  } catch {
+    return null;
+  }
+}
 
 // Create orders from cart items and initiate Razorpay payment
 export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
-    const body = await request.json();
-    
-    // Extract auth token
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const userId = await getUserId(request);
+    if (!userId) {
       return NextResponse.json(
         { success: false, error: 'No authorization token provided' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const body = await request.json();
 
     // Get user's cart
     const cart = await Cart.findOne({ userId });

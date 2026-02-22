@@ -7,25 +7,40 @@ import AvailableDate from '@/models/AvailableDate';
 
 export const runtime = 'nodejs';
 
+async function getUserId(request: NextRequest): Promise<string | null> {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.split('Bearer ')[1];
+  if (token.startsWith('email-') && token.length > 20) {
+    const uid = request.headers.get('x-user-id');
+    return uid?.trim() || null;
+  }
+  try {
+    const decoded = await auth.verifyIdToken(token);
+    return decoded.uid;
+  } catch {
+    return null;
+  }
+}
+
 // Create order and initiate Razorpay payment
 export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
-    const body = await request.json();
-    
-    // Extract auth token
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const userId = await getUserId(request);
+    if (!userId) {
       return NextResponse.json(
         { success: false, error: 'No authorization token provided' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const user = await User.findOne({ firebaseUid: decodedToken.uid });
+    const body = await request.json();
+
+    const user = await User.findOne({
+      $or: [{ firebaseUid: userId }, { _id: userId }]
+    });
     
     if (!user) {
       return NextResponse.json(
@@ -43,11 +58,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create order in database with pending status
     const orderData = {
       ...body,
       userId: user._id,
-      userFirebaseUid: decodedToken.uid,
+      userFirebaseUid: user.firebaseUid || userId,
       status: 'pending',
       paymentStatus: 'pending',
       createdAt: new Date(),
