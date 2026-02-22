@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import OTP from '@/models/OTP';
+import User from '@/models/User';
 import nodemailer from 'nodemailer';
-import { auth } from '@/lib/firebase/admin';
+import { getUserByEmail } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
 
@@ -40,38 +41,64 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if user exists in Firebase
-    let userExists = false;
-    try {
-      await auth.getUserByEmail(email);
-      userExists = true;
-    } catch {
-      // User not found in Firebase
-      return NextResponse.json(
-        { success: false, error: 'No account found with this email address' },
-        { status: 404 }
-      );
-    }
+    const emailNormalized = email.trim().toLowerCase();
 
-    if (!userExists) {
-      return NextResponse.json(
-        { success: false, error: 'No account found with this email address' },
-        { status: 404 }
-      );
-    }
-
-    // Connect to database
+    // Connect to database first so we can check MongoDB when needed
     await connectDB();
 
+    // Check if user exists in Firebase (required for password reset)
+    let userExistsInFirebase = false;
+    try {
+      await getUserByEmail(emailNormalized);
+      userExistsInFirebase = true;
+    } catch (firebaseError: unknown) {
+      const err = firebaseError as { code?: string; message?: string };
+      console.error('Forgot-password: Firebase getUserByEmail failed:', err.code || err.message, firebaseError);
+
+      // Only treat as "user not in Firebase" when Firebase explicitly says user not found
+      if (err.code === 'auth/user-not-found') {
+        const userInDb = await User.findOne({ email: emailNormalized }).lean();
+        if (userInDb) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'This email is registered but password reset is not available. If you signed up with Google, use "Continue with Google" to sign in. Otherwise please contact support.',
+            },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { success: false, error: 'No account found with this email address' },
+          { status: 404 }
+        );
+      }
+
+      // Other Firebase errors (permission, wrong project, etc.) – don't assume user doesn't exist
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unable to verify your account right now. Please try again in a few minutes or contact support.',
+        },
+        { status: 503 }
+      );
+    }
+
+    if (!userExistsInFirebase) {
+      return NextResponse.json(
+        { success: false, error: 'No account found with this email address' },
+        { status: 404 }
+      );
+    }
+
     // Delete any existing OTPs for this email
-    await OTP.deleteMany({ email, purpose: 'password_reset' });
+    await OTP.deleteMany({ email: emailNormalized, purpose: 'password_reset' });
 
     // Generate new OTP
     const otp = generateOTP();
 
     // Save OTP to database
     const newOTP = new OTP({
-      email,
+      email: emailNormalized,
       otp,
       purpose: 'password_reset',
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
@@ -85,7 +112,7 @@ export async function POST(req: NextRequest) {
     // Send OTP via email
     const mailOptions = {
       from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-      to: email,
+      to: emailNormalized,
       subject: 'Password Reset OTP - Jacob\'s Clothing',
       html: `
         <!DOCTYPE html>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import OTP from '@/models/OTP';
-import { auth } from '@/lib/firebase/admin';
+import { auth, getUserByEmail } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
 
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     // OTP is valid - Update password in Firebase
     try {
-      const userRecord = await auth.getUserByEmail(email);
+      const userRecord = await getUserByEmail(email);
       await auth.updateUser(userRecord.uid, {
         password: newPassword
       });

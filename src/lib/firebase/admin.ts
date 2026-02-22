@@ -13,7 +13,12 @@ function getServiceAccount(): admin.ServiceAccount | null {
   // Method 1: Try environment variable (for Vercel/production)
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
-      return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) as admin.ServiceAccount;
+      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) as admin.ServiceAccount;
+      // Ensure private_key newlines are correct (env vars often store \n as literal backslash-n)
+      if (parsed.private_key && typeof parsed.private_key === 'string') {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+      }
+      return parsed;
     } catch (error) {
       console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT from environment:', error);
     }
@@ -131,11 +136,17 @@ export const db = {
 export const auth = {
   verifyIdToken: (idToken: string) => getAuth().verifyIdToken(idToken),
   getUser: (uid: string) => getAuth().getUser(uid),
+  getUserByEmail: (email: string) => getAuth().getUserByEmail(email),
   createUser: (properties: admin.auth.CreateRequest) => getAuth().createUser(properties),
   updateUser: (uid: string, properties: admin.auth.UpdateRequest) => getAuth().updateUser(uid, properties),
   deleteUser: (uid: string) => getAuth().deleteUser(uid),
   // Add other methods as needed
 } as admin.auth.Auth;
+
+// Helper for forgot-password / reset-password (call getAuth() directly to avoid export/cache issues)
+export async function getUserByEmail(email: string) {
+  return getAuth().getUserByEmail(email);
+}
 
 // Helper function to verify Firebase ID tokens
 export async function verifyIdToken(token: string) {
