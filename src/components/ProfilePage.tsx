@@ -227,6 +227,7 @@ const ProfilePage = () => {
     try {
       await signOut(auth)
       localStorage.removeItem('firebaseToken')
+      localStorage.removeItem('emailLoginUser')
       dispatch(clearUser())
       setIsOpen(false)
     } catch (error) {

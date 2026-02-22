@@ -103,7 +103,7 @@ function Page() {
                     if (res.data.success && res.data.token && res.data.user) {
                         localStorage.setItem('firebaseToken', res.data.token);
                         const u = res.data.user;
-                        dispatch(setUser({
+                        const userDataForRedux = {
                             uid: u.uid as string,
                             name: (u.name as string) || '',
                             email: (u.email as string) || '',
@@ -115,7 +115,9 @@ function Page() {
                             isEmailVerified: !!u.isEmailVerified,
                             provider: (u.provider as string) || 'email',
                             createdAt: (u.createdAt as string) || new Date().toISOString(),
-                        }));
+                        };
+                        dispatch(setUser(userDataForRedux));
+                        localStorage.setItem('emailLoginUser', JSON.stringify(userDataForRedux));
                         router.push('/');
                         return;
                     }

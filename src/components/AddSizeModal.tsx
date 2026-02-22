@@ -110,7 +110,7 @@ const AddSizeModal: React.FC<AddSizeModalProps> = ({ userId, onSizeAdded }) => {
       }
 
       await axios.post('/api/user/sizes', sizeData)
-      
+
       setFormData({
         name: '',
         chest: '',
@@ -124,9 +124,15 @@ const AddSizeModal: React.FC<AddSizeModalProps> = ({ userId, onSizeAdded }) => {
       setErrors({})
       setOpen(false)
       onSizeAdded()
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error adding size:', error)
-      alert('Failed to add size. Please try again.')
+      const msg =
+        axios.isAxiosError(error) && error.response?.data?.message
+          ? String(error.response.data.message)
+          : axios.isAxiosError(error) && error.response?.status === 401
+            ? 'Please log in to save measurements.'
+            : 'Failed to save size. Please try again.'
+      alert(msg)
     } finally {
       setLoading(false)
     }

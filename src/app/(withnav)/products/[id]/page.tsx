@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { format } from 'date-fns'
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store';
@@ -96,6 +96,7 @@ function Page() {
   } = useForm<ProductOrder>({
     resolver: zodResolver(productOrderSchema),
     defaultValues: {
+      size: '',
       clothesProvided: 'no', // Default to no, will be set automatically based on product
       quantity: 1
     }
@@ -164,24 +165,35 @@ function Page() {
     fetchAvailableDates();
   }, [currentMonth]);
 
-  // Fetch user sizes
+  // Fetch user sizes (only when logged in; stop "Loading sizes..." when not)
   useEffect(() => {
+    if (!user.uid) {
+      setLoadingSizes(false);
+      setUserSizes([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSizes(true);
     const fetchUserSizes = async () => {
-      if (!user.uid) return;
-      
-      setLoadingSizes(true);
       try {
         const response = await axios.get(`/api/user/sizes?userId=${user.uid}`);
-        if (response.data.success) {
+        if (cancelled) return;
+        if (response.data?.success && Array.isArray(response.data.data)) {
           setUserSizes(response.data.data);
+        } else {
+          setUserSizes([]);
         }
       } catch (error) {
-        console.error('Error fetching user sizes:', error);
+        if (!cancelled) {
+          console.error('Error fetching user sizes:', error);
+          setUserSizes([]);
+        }
       } finally {
-        setLoadingSizes(false);
+        if (!cancelled) setLoadingSizes(false);
       }
     };
     fetchUserSizes();
+    return () => { cancelled = true; };
   }, [user.uid]);
 
   // Update currentMonth when slot type filter changes
@@ -805,7 +817,11 @@ function Page() {
                   <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-4">
                     <Label className="text-sm lg:text-lg font-semibold lg:min-w-[120px]">Measurement :</Label>
                     <div className="flex flex-1 gap-2">
-                      <Select onValueChange={(value) => setValue('size', value)} disabled={loadingSizes}>
+                      <Select
+                          value={watch('size') ?? ''}
+                          onValueChange={(value) => setValue('size', value)}
+                          disabled={loadingSizes}
+                        >
                         <SelectTrigger className="flex-1 text-sm lg:text-base">
                           <SelectValue placeholder={loadingSizes ? "Loading sizes..." : "Choose Measurement"} />
                         </SelectTrigger>
@@ -826,7 +842,20 @@ function Page() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <AddSizeModal userId={user.uid} onSizeAdded={refreshSizes} />
+                      {user.uid ? (
+                        <AddSizeModal userId={user.uid} onSizeAdded={refreshSizes} />
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="ml-2 px-2 py-1 h-8"
+                          onClick={() => router.push('/login')}
+                          title="Log in to add measurements"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                   {errors.size && <p className="text-red-500 text-xs lg:text-sm lg:ml-[136px]">{errors.size.message}</p>}

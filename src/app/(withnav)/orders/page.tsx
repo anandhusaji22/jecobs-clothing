@@ -50,19 +50,28 @@ export default function OrdersPage() {
   const fetchOrders = useCallback(async () => {
     try {
       setLoading(true)
-      
-      // Get Firebase ID token
+      setError('')
+
+      let authHeader: string
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('firebaseToken') : null
       const currentUser = auth.currentUser
-      if (!currentUser) {
+
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken()
+        authHeader = `Bearer ${idToken}`
+      } else if (storedToken && user.uid) {
+        // Email-login fallback: use stored token and send uid for API lookup
+        authHeader = `Bearer ${storedToken}`
+      } else {
         throw new Error('User not authenticated')
       }
-      const idToken = await currentUser.getIdToken()
-      
-      const response = await axios.get('/api/user/orders', {
-        headers: {
-          'Authorization': `Bearer ${idToken}`
-        }
-      })
+
+      const headers: Record<string, string> = { Authorization: authHeader }
+      if (storedToken?.startsWith('email-') && user.uid) {
+        headers['X-User-Id'] = user.uid
+      }
+
+      const response = await axios.get('/api/user/orders', { headers })
 
       if (response.data.success) {
         setOrders(response.data.orders || [])
@@ -76,7 +85,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user.uid])
 
   useEffect(() => {
     // Wait for auth loading to complete
@@ -203,7 +212,7 @@ export default function OrdersPage() {
                   }
                 </p>
                 {activeTab === 'placed' && (
-                  <Button onClick={() => router.push('/products')}>
+                  <Button onClick={() => router.push('/')}>
                     Start Shopping
                   </Button>
                 )}

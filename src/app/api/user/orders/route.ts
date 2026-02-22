@@ -7,7 +7,6 @@ export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json(
@@ -17,21 +16,33 @@ export async function GET(request: NextRequest) {
     }
 
     const token = authHeader.split('Bearer ')[1]
-    const decodedToken = await auth.verifyIdToken(token)
-    
-    if (!decodedToken) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid token' },
-        { status: 401 }
-      )
+    let userUid: string
+
+    // Email-login token (no Firebase): use X-User-Id header set by client
+    if (token.startsWith('email-') && token.length > 20) {
+      const uidFromHeader = request.headers.get('x-user-id')
+      if (!uidFromHeader?.trim()) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized' },
+          { status: 401 }
+        )
+      }
+      userUid = uidFromHeader.trim()
+    } else {
+      const decodedToken = await auth.verifyIdToken(token)
+      if (!decodedToken) {
+        return NextResponse.json(
+          { success: false, message: 'Invalid token' },
+          { status: 401 }
+        )
+      }
+      userUid = decodedToken.uid
     }
 
-    // Connect to database
     await dbConnect()
 
-    // Find all orders for the user, sorted by creation date (newest first)
     const orders = await Order.find({
-      userFirebaseUid: decodedToken.uid
+      userFirebaseUid: userUid
     }).sort({ createdAt: -1 })
 
     return NextResponse.json({
