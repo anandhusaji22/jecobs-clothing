@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import OTP from '@/models/OTP';
+import User from '@/models/User';
+import bcrypt from 'bcryptjs';
 import { auth, getUserByEmail } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
@@ -19,7 +21,8 @@ export async function POST(req: NextRequest) {
 
     // Validate email format
     const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email)) {
+    const emailNormalized = (email as string).trim().toLowerCase();
+    if (!emailRegex.test(emailNormalized)) {
       return NextResponse.json(
         { success: false, error: 'Invalid email format' },
         { status: 400 }
@@ -47,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     // Find the OTP record
     const otpRecord = await OTP.findOne({
-      email,
+      email: emailNormalized,
       purpose: 'password_reset',
       verified: false
     }).sort({ createdAt: -1 });
@@ -93,25 +96,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // OTP is valid - Update password in Firebase
+    // OTP is valid - Update password: try Firebase first, fallback to MongoDB (e.g. when Firebase key is invalid)
+    let passwordUpdated = false;
     try {
-      const userRecord = await getUserByEmail(email);
+      const userRecord = await getUserByEmail(emailNormalized);
       await auth.updateUser(userRecord.uid, {
         password: newPassword
       });
-    } catch (error) {
+      passwordUpdated = true;
+    } catch (error: unknown) {
       console.error('Error updating password in Firebase:', error);
-      return NextResponse.json(
-        { success: false, error: 'Failed to update password. Please try again.' },
-        { status: 500 }
-      );
+      const code = (error as { code?: string })?.code;
+      if (code === 'auth/user-not-found') {
+        return NextResponse.json(
+          { success: false, error: 'Account not found in our system. Please sign up again or contact support.' },
+          { status: 400 }
+        );
+      }
+      // When Firebase Admin key is invalid/removed (app/invalid-credential etc.), update password in MongoDB so login still works via email API
+      const mongoUser = await User.findOne({ email: emailNormalized });
+      if (mongoUser && (mongoUser.authProvider === 'email' || mongoUser.password)) {
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        mongoUser.password = hashedPassword;
+        await mongoUser.save();
+        passwordUpdated = true;
+      }
+      if (!passwordUpdated) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to update password. Please try again or request a new OTP.' },
+          { status: 500 }
+        );
+      }
     }
 
     // Mark OTP as verified and delete it
     await OTP.deleteOne({ _id: otpRecord._id });
-
-    // Also delete any other OTPs for this email
-    await OTP.deleteMany({ email, purpose: 'password_reset' });
+    await OTP.deleteMany({ email: emailNormalized, purpose: 'password_reset' });
 
     return NextResponse.json(
       { 

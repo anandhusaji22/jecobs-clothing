@@ -17,7 +17,7 @@ export const createAuthenticatedAxios = () => {
 };
 
 // Helper function for making authenticated API calls with axios
-export const makeAuthenticatedRequest = async (url: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: unknown) => {
+export const makeAuthenticatedRequest = async (url: string, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'GET', data?: unknown) => {
   const token = localStorage.getItem('firebaseToken');
   
   if (!token) {

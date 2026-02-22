@@ -88,25 +88,48 @@ function Page() {
             router.push('/');
 
         } catch (error: unknown) {
-            let errorMsg = 'Login failed. Please try again.';
-            
-            if (error instanceof Error) {
-                if (error.message.includes('auth/user-not-found')) {
-                    errorMsg = 'No account found with this email address.';
-                } else if (error.message.includes('auth/wrong-password')) {
-                    errorMsg = 'Incorrect password. Please try again.';
-                } else if (error.message.includes('auth/invalid-email')) {
-                    errorMsg = 'Please enter a valid email address.';
-                } else if (error.message.includes('auth/user-disabled')) {
-                    errorMsg = 'This account has been disabled.';
-                } else if (error.message.includes('auth/too-many-requests')) {
-                    errorMsg = 'Too many failed attempts. Please try again later.';
-                } else if (error.message.includes('auth/invalid-credential')) {
-                    errorMsg = 'Invalid email or password. Please check your credentials.';
+            // If Firebase sign-in fails (e.g. wrong password or Firebase key issue), try MongoDB email login (works after password reset via MongoDB fallback)
+            const firebaseError = error as { message?: string };
+            const isCredentialError =
+                firebaseError?.message?.includes('auth/wrong-password') ||
+                firebaseError?.message?.includes('auth/user-not-found') ||
+                firebaseError?.message?.includes('auth/invalid-credential');
+            if (isCredentialError) {
+                try {
+                    const res = await axios.post<{ success: boolean; token?: string; user?: Record<string, unknown>; error?: string }>('/api/auth/login-email', {
+                        email: data.email,
+                        password: data.password,
+                    });
+                    if (res.data.success && res.data.token && res.data.user) {
+                        localStorage.setItem('firebaseToken', res.data.token);
+                        const u = res.data.user;
+                        dispatch(setUser({
+                            uid: u.uid as string,
+                            name: (u.name as string) || '',
+                            email: (u.email as string) || '',
+                            phoneNumber: (u.phoneNumber as string) || '',
+                            role: (u.role as string) || 'customer',
+                            photoURL: (u.photoURL as string) || '',
+                            denomination: (u.denomination as string) || '',
+                            isPhoneVerified: !!u.isPhoneVerified,
+                            isEmailVerified: !!u.isEmailVerified,
+                            provider: (u.provider as string) || 'email',
+                            createdAt: (u.createdAt as string) || new Date().toISOString(),
+                        }));
+                        router.push('/');
+                        return;
+                    }
+                    setErrorMessage(res.data.error || 'Invalid email or password. Please try again.');
+                } catch {
+                    setErrorMessage('Invalid email or password. Please try again.');
                 }
+            } else {
+                let errorMsg = 'Login failed. Please try again.';
+                if (firebaseError?.message?.includes('auth/invalid-email')) errorMsg = 'Please enter a valid email address.';
+                else if (firebaseError?.message?.includes('auth/user-disabled')) errorMsg = 'This account has been disabled.';
+                else if (firebaseError?.message?.includes('auth/too-many-requests')) errorMsg = 'Too many failed attempts. Please try again later.';
+                setErrorMessage(errorMsg);
             }
-            
-            setErrorMessage(errorMsg);
         } finally {
             setIsLoading(false);
         }

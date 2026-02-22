@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import axios from 'axios'
 import { makeAuthenticatedRequest } from '@/lib/adminApi'
 
 interface UserItem {
@@ -65,6 +66,12 @@ const UsersPage = () => {
     waist: '',
     backPleatLength: ''
   })
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
 
   useEffect(() => {
     fetchUsers()
@@ -87,6 +94,11 @@ const UsersPage = () => {
   const fetchUserDetails = async (userId: string) => {
     try {
       setDetailLoading(true)
+      setShowPasswordForm(false)
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordError(null)
+      setPasswordSuccess(false)
       const response = await makeAuthenticatedRequest(`/api/admin/users/${userId}`)
       if (response.data.success) {
         setSelectedUser(response.data.user)
@@ -96,6 +108,39 @@ const UsersPage = () => {
       console.error('Error fetching user details:', error)
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const handleSavePassword = async () => {
+    if (!selectedUser) return
+    setPasswordError(null)
+    setPasswordSuccess(false)
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match')
+      return
+    }
+    setSavingPassword(true)
+    try {
+      await makeAuthenticatedRequest(
+        `/api/admin/users/${selectedUser._id}/password`,
+        'PATCH',
+        { newPassword }
+      )
+      setPasswordSuccess(true)
+      setNewPassword('')
+      setConfirmPassword('')
+      setShowPasswordForm(false)
+    } catch (err) {
+      const msg = axios.isAxiosError(err) && err.response?.data?.error
+        ? String(err.response.data.error)
+        : 'Failed to update password. Please try again.'
+      setPasswordError(msg)
+    } finally {
+      setSavingPassword(false)
     }
   }
 
@@ -329,6 +374,83 @@ const UsersPage = () => {
                     <p className="text-sm">{selectedUser.address}</p>
                   </div>
                 </div>
+              </div>
+
+              {/* Admin: Change user password */}
+              <div className="border-t border-gray-200 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-gray-500">Password (admin only)</label>
+                  {!showPasswordForm ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => {
+                        setShowPasswordForm(true)
+                        setPasswordError(null)
+                        setPasswordSuccess(false)
+                      }}
+                    >
+                      Change password
+                    </Button>
+                  ) : null}
+                </div>
+                {showPasswordForm ? (
+                  <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="admin-new-password" className="text-xs text-gray-500">New password</Label>
+                      <Input
+                        id="admin-new-password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Min 6 characters"
+                        className="text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="admin-confirm-password" className="text-xs text-gray-500">Confirm password</Label>
+                      <Input
+                        id="admin-confirm-password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Re-enter new password"
+                        className="text-sm"
+                      />
+                    </div>
+                    {passwordError && <p className="text-red-500 text-xs">{passwordError}</p>}
+                    {passwordSuccess && <p className="text-green-600 text-xs">Password updated successfully.</p>}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowPasswordForm(false)
+                          setNewPassword('')
+                          setConfirmPassword('')
+                          setPasswordError(null)
+                          setPasswordSuccess(false)
+                        }}
+                        disabled={savingPassword}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleSavePassword}
+                        disabled={savingPassword}
+                      >
+                        {savingPassword ? 'Saving...' : 'Update password'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">Set a new password for this user (no OTP required).</p>
+                )}
               </div>
 
               {/* Saved Sizes */}

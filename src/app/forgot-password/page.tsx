@@ -49,12 +49,15 @@ export default function ForgotPasswordPage() {
       }
     } catch (error) {
       console.error('Error:', error)
-      const errorMessage = axios.isAxiosError(error) && error.response?.data?.error
-        ? error.response.data.error
-        : 'Failed to send OTP. Please try again.'
-      setMessage({ 
-        type: 'error', 
-        text: errorMessage
+      const errorMessage =
+        axios.isAxiosError(error) && error.response?.data?.error
+          ? String(error.response.data.error)
+          : axios.isAxiosError(error) && error.response?.status === 503
+            ? 'Service temporarily unavailable. Please try again in a moment.'
+            : 'Failed to send OTP. Please check your email and try again.'
+      setMessage({
+        type: 'error',
+        text: errorMessage,
       })
     } finally {
       setIsLoading(false)
