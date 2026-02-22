@@ -13,12 +13,12 @@ function getServiceAccount(): admin.ServiceAccount | null {
   // Method 1: Try environment variable (for Vercel/production)
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
-      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) as admin.ServiceAccount;
-      // Ensure private_key newlines are correct (env vars often store \n as literal backslash-n)
+      // Parse as plain object (Firebase JSON uses snake_case e.g. private_key)
+      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) as Record<string, unknown> & { private_key?: string };
       if (parsed.private_key && typeof parsed.private_key === 'string') {
         parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
       }
-      return parsed;
+      return parsed as admin.ServiceAccount;
     } catch (error) {
       console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT from environment:', error);
     }

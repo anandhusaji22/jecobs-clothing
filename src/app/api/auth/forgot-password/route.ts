@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import OTP from '@/models/OTP';
 import User from '@/models/User';
+import type { IUser } from '@/models/User';
 import nodemailer from 'nodemailer';
 
 export const runtime = 'nodejs';
@@ -46,13 +47,14 @@ export async function POST(req: NextRequest) {
     await connectDB();
 
     // Use MongoDB as source of truth (same as signup). Avoids Firebase 503.
-    const user = await User.findOne({ email: emailNormalized }).lean();
-    if (!user) {
+    const userDoc = await User.findOne({ email: emailNormalized }).lean();
+    if (!userDoc) {
       return NextResponse.json(
         { success: false, error: 'No account found with this email address' },
         { status: 404 }
       );
     }
+    const user = userDoc as Partial<IUser>;
 
     // Google-only users don't have a password to reset
     if (user.authProvider === 'google' && !user.password) {
